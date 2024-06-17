@@ -7,6 +7,7 @@ fn read_pe_version_info<'a>(image: &'a [u8]) -> Option<VersionInfo<'a>> {
 const LANG_NEUTRAL_UNICODE: Language = Language { lang_id: 0x0000, charset_id: 0x04b0 };
 fn detect_hachimi_version() {
     println!("cargo:rerun-if-env-changed=HACHIMI_VERSION");
+    println!("cargo:rerun-if-changed=hachimi.dll");
 
     // Allow manual override
     if std::env::var("HACHIMI_VERSION").is_ok() {
