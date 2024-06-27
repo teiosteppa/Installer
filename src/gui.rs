@@ -3,7 +3,12 @@ use windows::{core::{w, HSTRING}, Win32::{
     Foundation::{HWND, LPARAM, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
     UI::{Input::KeyboardAndMouse::EnableWindow, WindowsAndMessaging::{
-        CreateDialogParamW, DestroyIcon, DispatchMessageW, GetDlgItem, GetMessageW, GetWindowLongPtrW, LoadIconW, MessageBoxW, PostQuitMessage, SendMessageW, SetWindowLongPtrW, SetWindowTextW, ShowWindow, TranslateMessage, CBN_SELCHANGE, CB_ADDSTRING, CB_DELETESTRING, CB_GETCURSEL, CB_INSERTSTRING, CB_SETCURSEL, GWLP_USERDATA, ICON_BIG, IDOK, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL, MSG, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_INITDIALOG, WM_SETICON
+        CreateDialogParamW, DestroyIcon, DispatchMessageW, GetDlgItem, GetMessageW,
+        GetWindowLongPtrW, LoadIconW, MessageBoxW, PostQuitMessage, SendMessageW,
+        SetWindowLongPtrW,SetWindowTextW, ShowWindow, TranslateMessage,
+        CBN_SELCHANGE, CB_ADDSTRING, CB_DELETESTRING, CB_GETCURSEL, CB_INSERTSTRING, CB_SETCURSEL,
+        GWLP_USERDATA, ICON_BIG, IDOK, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONWARNING,
+        MB_OK, MB_OKCANCEL, MB_YESNO, MSG, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_INITDIALOG, WM_SETICON
     }}
 }};
 
@@ -212,10 +217,42 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                         MB_ICONINFORMATION | MB_OKCANCEL
                     );
                     if res == IDOK {
+                        let version_info_opt = installer.get_target_version_info(installer.target);
                         if let Err(e) = installer.uninstall() {
                             MessageBoxW(dialog, &HSTRING::from(e.to_string()), w!("Error"), MB_ICONERROR | MB_OK);
+                            return 0;
                         }
                         update_target(dialog, GetDlgItem(dialog, IDC_TARGET), installer.target as _);
+
+                        if let Some(version_info) = version_info_opt {
+                            if !version_info.is_hachimi() {
+                                return 0;
+                            }
+
+                            // Check if the hachimi data dir exists and prompt user to delete it
+                            let hachimi_dir = installer.install_dir.as_ref().unwrap().join("hachimi");
+                            let Ok(metadata) = std::fs::metadata(&hachimi_dir) else {
+                                return 0;
+                            };
+                            
+                            if metadata.is_dir() {
+                                let res = MessageBoxW(
+                                    dialog,
+                                    w!("Do you also want to delete Hachimi's data directory? \
+                                        The game may crash if it is present without Hachimi.\n\
+                                        If unsure, choose Yes."),
+                                    w!("Uninstall"),
+                                    MB_ICONINFORMATION | MB_YESNO
+                                );
+
+                                if res == IDYES {
+                                    if let Err(e) = std::fs::remove_dir_all(&hachimi_dir) {
+                                        MessageBoxW(dialog, &HSTRING::from(e.to_string()), w!("Error"), MB_ICONERROR | MB_OK);
+                                        return 0;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 

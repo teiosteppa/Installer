@@ -2,7 +2,18 @@ use std::{ffi::CStr, path::{Path, PathBuf}};
 
 use pelite::resources::version_info::VersionInfo;
 use windows::{core::HSTRING, Win32::{
-    Foundation::{HWND, RECT}, System::{Com::{CoCreateInstance, CLSCTX_INPROC_SERVER}, Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPALL}}, UI::{Shell::{FileOpenDialog, IFileOpenDialog, IShellItem, SHCreateItemFromParsingName, FOS_FILEMUSTEXIST, FOS_PICKFOLDERS, SIGDN_FILESYSPATH}, WindowsAndMessaging::{GetDesktopWindow, GetWindowRect, SetWindowPos, SWP_NOSIZE}}
+    Foundation::{HWND, RECT},
+    System::{
+        Com::{CoCreateInstance, CLSCTX_INPROC_SERVER},
+        Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPALL}
+    },
+    UI::{
+        Shell::{
+            FileOpenDialog, IFileOpenDialog, IShellItem, SHCreateItemFromParsingName,
+            FOS_FILEMUSTEXIST, FOS_PICKFOLDERS, SIGDN_FILESYSPATH
+        },
+        WindowsAndMessaging::{GetDesktopWindow, GetWindowRect, SetWindowPos, SWP_NOSIZE}
+    }
 }};
 
 pub trait RECTExt {
