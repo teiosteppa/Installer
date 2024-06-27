@@ -9,7 +9,6 @@ lto = true
 [dependencies]
 tinyjson = "2.5"
 pelite = "0.10"
-clap = { version = "4.5", features = ["std", "derive"], default-features = false }
 include-bytes-zstd = { version = "0.1", optional = true }
 
 [dependencies.windows]

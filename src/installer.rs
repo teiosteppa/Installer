@@ -61,6 +61,10 @@ impl Installer {
     }
 
     pub fn get_target_path(&self, target: Target) -> Option<PathBuf> {
+        Some(self.install_dir.as_ref()?.join(target.dll_name()))
+    }
+
+    pub fn get_current_target_path(&self) -> Option<PathBuf> {
         let install_dir = self.install_dir.as_ref()?;
         
         Some(
@@ -68,7 +72,7 @@ impl Installer {
                 install_dir.join(custom_target)
             }
             else {
-                install_dir.join(target.dll_name())
+                install_dir.join(self.target.dll_name())
             }
         )
     }
@@ -99,7 +103,7 @@ impl Installer {
     }
 
     pub fn is_current_target_installed(&self) -> bool {
-        let Some(path) = self.get_target_path(self.target) else {
+        let Some(path) = self.get_current_target_path() else {
             return false;
         };
 
@@ -122,7 +126,7 @@ impl Installer {
     }
 
     pub fn install(&self) -> Result<(), Error> {
-        let path = self.get_target_path(self.target).ok_or(Error::NoInstallDir)?;
+        let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
         let mut file = File::create(&path)?;
 
         #[cfg(feature = "compress_dll")]
@@ -135,7 +139,7 @@ impl Installer {
     }
 
     pub fn uninstall(&self) -> Result<(), Error> {
-        let path = self.get_target_path(self.target).ok_or(Error::NoInstallDir)?;
+        let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
         std::fs::remove_file(&path)?;
         Ok(())
     }

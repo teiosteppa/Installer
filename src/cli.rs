@@ -1,32 +1,69 @@
 use std::path::{Path, PathBuf};
 
-use clap::{Parser, Subcommand};
-use windows::{core::w, Win32::UI::WindowsAndMessaging::{MessageBoxW, IDCANCEL, MB_ICONINFORMATION, MB_OKCANCEL}};
+use windows::{core::{w, HSTRING}, Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::{MessageBoxW, IDCANCEL, MB_ICONINFORMATION, MB_OKCANCEL, SW_NORMAL}}};
 
 use crate::{installer::{self, Installer}, utils};
 
-#[derive(Parser)]
+#[derive(Default)]
 struct Args {
-    #[command(subcommand)]
-    command: Option<Commands>,
-
-    #[arg(long)]
+    command: Option<Command>,
     install_dir: Option<PathBuf>,
-
-    #[arg(long)]
     target: Option<String>,
-
-    #[arg(long)]
     sleep: Option<u64>,
-
-    #[arg(long, action)]
-    prompt_for_game_exit: bool
+    prompt_for_game_exit: bool,
+    launch_game: bool,
+    game_args: Vec<String>
 }
 
-#[derive(Subcommand)]
-enum Commands {
+enum Command {
     Install,
     Uninstall
+}
+
+#[inline]
+fn require_next_arg(args: &mut std::env::Args) -> String {
+    args.next().unwrap_or_else(|| std::process::exit(128))
+}
+
+impl Args {
+    fn parse() -> Args {
+        let mut args = Args::default();
+
+        let mut iter = std::env::args();
+        iter.next();
+
+        let mut in_game_args = false;
+        loop {
+            let Some(arg) = iter.next() else {
+                break;
+            };
+
+            if in_game_args {
+                args.game_args.push(arg);
+                continue;
+            }
+
+            match arg.as_str() {
+                "install" => args.command = Some(Command::Install),
+                "uninstall" => args.command = Some(Command::Uninstall),
+
+
+                "--install-dir" => args.install_dir = Some(require_next_arg(&mut iter).into()),
+                "--target" => args.target = Some(require_next_arg(&mut iter)),
+                "--sleep" => args.sleep = Some(require_next_arg(&mut iter).parse().unwrap_or_else(|_| std::process::exit(128))),
+                "--prompt-for-game-exit" => args.prompt_for_game_exit = true,
+                "--launch-game" => args.launch_game = true,
+                "--" => in_game_args = true,
+
+                _ => {
+                    // Invalid argument
+                    std::process::exit(128);
+                }
+            }
+        }
+
+        args
+    }
 }
 
 pub fn run() -> Result<bool, installer::Error> {
@@ -66,8 +103,24 @@ pub fn run() -> Result<bool, installer::Error> {
 
         let installer = Installer::custom(args.install_dir, args.target);
         match command {
-            Commands::Install => installer.install()?,
-            Commands::Uninstall => installer.uninstall()?
+            Command::Install => installer.install()?,
+            Command::Uninstall => installer.uninstall()?
+        }
+
+        if args.launch_game {
+            let target_path = installer.get_current_target_path().unwrap();
+            let game_dir = target_path.parent().unwrap();
+            let exe_path = game_dir.join("umamusume.exe");
+            unsafe {
+                ShellExecuteW(
+                    None,
+                    None,
+                    &HSTRING::from(exe_path.to_str().unwrap()),
+                    &HSTRING::from(args.game_args.join(" ")),
+                    &HSTRING::from(game_dir.to_str().unwrap()),
+                    SW_NORMAL
+                );
+            }
         }
 
         Ok(true)
