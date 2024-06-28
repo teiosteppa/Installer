@@ -1,6 +1,12 @@
 use std::path::{Path, PathBuf};
 
-use windows::{core::{w, HSTRING}, Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::{MessageBoxW, IDCANCEL, MB_ICONINFORMATION, MB_OKCANCEL, SW_NORMAL}}};
+use windows::{
+    core::{w, HSTRING},
+    Win32::UI::{
+        Shell::ShellExecuteW,
+        WindowsAndMessaging::{MessageBoxW, IDCANCEL, MB_ICONINFORMATION, MB_OKCANCEL, SW_NORMAL}
+    }
+};
 
 use crate::{installer::{self, Installer}, utils};
 
