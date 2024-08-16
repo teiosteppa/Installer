@@ -158,18 +158,16 @@ impl Default for Installer {
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Target {
     Dxgi,
-    WinHttp,
-    Version
+    Opengl32
 }
 
 impl Target {
-    pub const VALUES: [Self; 3] = [Self::Dxgi, Self::WinHttp, Self::Version];
+    pub const VALUES: [Self; 2] = [Self::Dxgi, Self::Opengl32];
 
     pub fn dll_name(&self) -> &'static str {
         match self {
             Self::Dxgi => "dxgi.dll",
-            Self::WinHttp => "winhttp.dll",
-            Self::Version => "version.dll"
+            Self::Opengl32 => "opengl32.dll"
         }
     }
 }
