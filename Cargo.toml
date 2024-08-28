@@ -25,6 +25,10 @@ features = [
 [build-dependencies]
 embed-resource = "2.4"
 pelite = "0.10"
+cc = "1.1"
+
+[patch.crates-io]
+embed-resource = { git = "https://github.com/nabijaczleweli/rust-embed-resource.git", rev = "e98e9aa28d66b0c2ff43516b41847cac372310dd" }
 
 [features]
 default = ["compress_dll"]
