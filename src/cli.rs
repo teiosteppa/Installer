@@ -4,7 +4,7 @@ use windows::{
     core::{w, HSTRING},
     Win32::UI::{
         Shell::ShellExecuteW,
-        WindowsAndMessaging::{MessageBoxW, IDCANCEL, MB_ICONINFORMATION, MB_OKCANCEL, SW_NORMAL}
+        WindowsAndMessaging::{MessageBoxW, IDCANCEL, MB_ICONERROR, MB_ICONINFORMATION, MB_OK, MB_OKCANCEL, SW_NORMAL}
     }
 };
 
@@ -108,9 +108,13 @@ pub fn run() -> Result<bool, installer::Error> {
         }
 
         let installer = Installer::custom(args.install_dir, args.target);
-        match command {
-            Command::Install => installer.install()?,
-            Command::Uninstall => installer.uninstall()?
+        let res = match command {
+            Command::Install => installer.install(),
+            Command::Uninstall => installer.uninstall()
+        };
+        if let Err(e) = res {
+            unsafe { MessageBoxW(None, &HSTRING::from(e.to_string()), w!("Hachimi Installer"), MB_ICONERROR | MB_OK); }
+            return Err(e);
         }
 
         if args.launch_game {
