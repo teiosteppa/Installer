@@ -154,7 +154,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                     let installer = get_installer(dialog);
                     let Some(path) = utils::open_select_folder_dialog(
                         dialog,
-                        installer.install_dir.as_ref()
+                        installer.install_dir.as_ref().filter(|p| p.is_dir())
                     ) else {
                         return 1;
                     };

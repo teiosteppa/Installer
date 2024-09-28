@@ -50,11 +50,17 @@ impl Installer {
             let JsonValue::Object(detail) = &game["detail"] else {
                 return None;
             };
-            let JsonValue::String(path) = &detail["path"] else {
+            let JsonValue::String(path_str) = &detail["path"] else {
                 return None;
             };
-            
-            return Some(path.into());
+
+            let path = PathBuf::from(path_str);
+            return if path.is_dir() {
+                Some(path)
+            }
+            else {
+                None
+            }
         }
 
         None
