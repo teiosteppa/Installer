@@ -4,20 +4,22 @@ use pelite::resources::version_info::Language;
 use tinyjson::JsonValue;
 use windows::Win32::UI::Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT};
 
-use crate::utils;
+use crate::utils::{self, get_system_directory};
 
 pub struct Installer {
     pub install_dir: Option<PathBuf>,
     pub target: Target,
-    pub custom_target: Option<String>
+    pub custom_target: Option<String>,
+    system_dir: PathBuf
 }
 
 impl Installer {
     pub fn custom(install_dir: Option<PathBuf>, target: Option<String>) -> Installer {
         Installer {
             install_dir: install_dir.or_else(Self::detect_install_dir),
-            target: Target::Dxgi,
-            custom_target: target
+            target: Target::default(),
+            custom_target: target,
+            system_dir: get_system_directory()
         }
     }
 
@@ -66,26 +68,30 @@ impl Installer {
         None
     }
 
-    pub fn get_target_path(&self, target: Target) -> Option<PathBuf> {
-        Some(self.install_dir.as_ref()?.join(target.dll_name()))
+    pub fn get_target_path(&self, target: Target) -> PathBuf {
+        self.system_dir.join(target.dll_name())
     }
 
-    pub fn get_current_target_path(&self) -> Option<PathBuf> {
-        let install_dir = self.install_dir.as_ref()?;
-        
-        Some(
-            if let Some(custom_target) = &self.custom_target {
-                install_dir.join(custom_target)
-            }
-            else {
-                install_dir.join(self.target.dll_name())
-            }
-        )
+    pub fn get_current_target_path(&self) -> PathBuf {
+        if let Some(custom_target) = &self.custom_target {
+            self.system_dir.join(custom_target)
+        }
+        else {
+            self.system_dir.join(self.target.dll_name())
+        }
+    }
+
+    pub fn get_dest_dll_path(&self) -> Option<PathBuf> {
+        Some(self.install_dir.as_ref()?.join(format!("hachimi\\{}", self.target.dll_name())))
+    }
+
+    pub fn get_src_dll_path(&self) -> Option<PathBuf> {
+        Some(self.install_dir.as_ref()?.join(format!("umamusume_Data\\Plugins\\x86_64\\{}", self.target.dll_name())))
     }
 
     const LANG_NEUTRAL_UNICODE: Language = Language { lang_id: 0x0000, charset_id: 0x04b0 };
     pub fn get_target_version_info(&self, target: Target) -> Option<TargetVersionInfo> {
-        let path = self.get_target_path(target)?;
+        let path = self.get_target_path(target);
         let map = pelite::FileMap::open(&path).ok()?;
 
         // File exists, so return empty version info if we can't read it
@@ -109,9 +115,7 @@ impl Installer {
     }
 
     pub fn is_current_target_installed(&self) -> bool {
-        let Some(path) = self.get_current_target_path() else {
-            return false;
-        };
+        let path = self.get_current_target_path();
 
         let Ok(metadata) = std::fs::metadata(&path) else {
             return false;
@@ -122,9 +126,9 @@ impl Installer {
 
     pub fn get_hachimi_installed_target(&self) -> Option<Target> {
         for target in Target::VALUES {
-            if let Some(version_info) = self.get_target_version_info(target) {
+            if let Some(version_info) = self.get_target_version_info(*target) {
                 if version_info.is_hachimi() {
-                    return Some(target);
+                    return Some(*target);
                 }
             }
         }
@@ -132,7 +136,15 @@ impl Installer {
     }
 
     pub fn install(&self) -> Result<(), Error> {
-        let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
+        // Verify install dir first
+        let dest_dll = self.get_dest_dll_path().ok_or(Error::NoInstallDir)?;
+        let src_dll = self.get_src_dll_path().ok_or(Error::NoInstallDir)?;
+
+        if !dest_dll.exists() && !src_dll.exists() {
+            return Err(Error::CannotFindTarget);
+        }
+
+        let path = self.get_current_target_path();
         let mut file = File::create(&path)?;
 
         #[cfg(feature = "compress_dll")]
@@ -141,12 +153,27 @@ impl Installer {
         #[cfg(not(feature = "compress_dll"))]
         file.write(include_bytes!("../hachimi.dll"))?;
 
+        if src_dll.exists() {
+            std::fs::create_dir_all(dest_dll.parent().unwrap())?;
+            std::fs::copy(&src_dll, &dest_dll)?;
+            std::fs::remove_file(&src_dll)?;
+        }
+
         Ok(())
     }
 
     pub fn uninstall(&self) -> Result<(), Error> {
-        let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
+        let dest_dll = self.get_dest_dll_path().ok_or(Error::NoInstallDir)?;
+        let src_dll = self.get_src_dll_path().ok_or(Error::NoInstallDir)?;
+
+        let path = self.get_current_target_path();
         std::fs::remove_file(&path)?;
+
+        if !src_dll.exists() {
+            std::fs::copy(&dest_dll, &src_dll)?;
+            std::fs::remove_file(&dest_dll)?;
+        }
+
         Ok(())
     }
 }
@@ -155,26 +182,31 @@ impl Default for Installer {
     fn default() -> Installer {
         Installer {
             install_dir: Self::detect_install_dir(),
-            target: Target::Dxgi,
-            custom_target: None
+            target: Target::default(),
+            custom_target: None,
+            system_dir: get_system_directory()
         }
     }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Target {
-    Dxgi,
-    Opengl32
+    CriManaVpx
 }
 
 impl Target {
-    pub const VALUES: [Self; 2] = [Self::Dxgi, Self::Opengl32];
+    pub const VALUES: &[Self] = &[Self::CriManaVpx];
 
     pub fn dll_name(&self) -> &'static str {
         match self {
-            Self::Dxgi => "dxgi.dll",
-            Self::Opengl32 => "opengl32.dll"
+            Self::CriManaVpx => "cri_mana_vpx.dll"
         }
+    }
+}
+
+impl Default for Target {
+    fn default() -> Self {
+        Self::CriManaVpx
     }
 }
 
@@ -201,6 +233,7 @@ impl TargetVersionInfo {
 #[derive(Debug)]
 pub enum Error {
     NoInstallDir,
+    CannotFindTarget,
     IoError(std::io::Error)
 }
 
@@ -208,6 +241,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::NoInstallDir => write!(f, "No install location specified"),
+            Error::CannotFindTarget => write!(f, "Cannot find target DLL in specified install location"),
             Error::IoError(error) => write!(f, "I/O error: {}", error)
         }
     }

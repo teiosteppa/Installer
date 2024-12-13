@@ -99,7 +99,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             let mut default_target_set = false;
             let mut multiple_installs = false;
             for (i, target) in installer::Target::VALUES.into_iter().enumerate() {
-                let label = if let Some(version_info) = installer.get_target_version_info(target) {
+                let label = if let Some(version_info) = installer.get_target_version_info(*target) {
                     if version_info.is_hachimi() {
                         if default_target_set {
                             // Already set; multiple installations detected!
@@ -108,7 +108,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                         default_target = i;
                         default_target_set = true;
                     }
-                    version_info.get_display_label(target)
+                    version_info.get_display_label(*target)
                 }
                 else {
                     target.dll_name().to_owned()

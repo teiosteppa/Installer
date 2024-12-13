@@ -118,8 +118,7 @@ pub fn run() -> Result<bool, installer::Error> {
         }
 
         if args.launch_game {
-            let target_path = installer.get_current_target_path().unwrap();
-            let game_dir = target_path.parent().unwrap();
+            let game_dir = installer.install_dir.unwrap();
             let exe_path = game_dir.join("umamusume.exe");
             unsafe {
                 ShellExecuteW(

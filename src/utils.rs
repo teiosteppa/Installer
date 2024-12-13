@@ -1,20 +1,27 @@
-use std::{ffi::CStr, path::{Path, PathBuf}};
+use std::{ffi::{CStr, OsString}, os::windows::ffi::OsStringExt, path::{Path, PathBuf}};
 
 use pelite::resources::version_info::VersionInfo;
-use windows::{core::HSTRING, Win32::{
-    Foundation::{HWND, RECT},
-    System::{
-        Com::{CoCreateInstance, CLSCTX_INPROC_SERVER},
-        Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32, TH32CS_SNAPALL}
-    },
-    UI::{
-        Shell::{
-            FileOpenDialog, IFileOpenDialog, IShellItem, SHCreateItemFromParsingName,
-            FOS_FILEMUSTEXIST, FOS_PICKFOLDERS, SIGDN_FILESYSPATH
+use windows::{
+    core::HSTRING,
+    Win32::{
+        Foundation::{HWND, MAX_PATH, RECT},
+        System::{
+            Com::{CoCreateInstance, CLSCTX_INPROC_SERVER},
+            Diagnostics::ToolHelp::{
+                CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
+                TH32CS_SNAPALL,
+            },
+            SystemInformation::GetSystemDirectoryW,
         },
-        WindowsAndMessaging::{GetDesktopWindow, GetWindowRect, SetWindowPos, SWP_NOSIZE}
-    }
-}};
+        UI::{
+            Shell::{
+                FileOpenDialog, IFileOpenDialog, IShellItem, SHCreateItemFromParsingName,
+                FOS_FILEMUSTEXIST, FOS_PICKFOLDERS, SIGDN_FILESYSPATH,
+            },
+            WindowsAndMessaging::{GetDesktopWindow, GetWindowRect, SetWindowPos, SWP_NOSIZE},
+        },
+    },
+};
 
 pub trait RECTExt {
     fn dimensions(&self) -> (i32, i32);
@@ -44,21 +51,31 @@ pub fn center_window(window: HWND) -> Result<(), windows::core::Error> {
 }
 
 pub fn read_pe_version_info<'a>(image: &'a [u8]) -> Option<VersionInfo<'a>> {
-    pelite::PeFile::from_bytes(image).ok()?.resources().ok()?.version_info().ok()
+    pelite::PeFile::from_bytes(image)
+        .ok()?
+        .resources()
+        .ok()?
+        .version_info()
+        .ok()
 }
 
-pub fn open_select_folder_dialog<P: AsRef<Path>>(owner: HWND, default_folder: Option<P>) -> Option<PathBuf> {
-    let dialog: IFileOpenDialog = unsafe {
-        CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?
-    };
+pub fn open_select_folder_dialog<P: AsRef<Path>>(
+    owner: HWND,
+    default_folder: Option<P>,
+) -> Option<PathBuf> {
+    let dialog: IFileOpenDialog =
+        unsafe { CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()? };
 
     unsafe {
         dialog.SetTitle(&HSTRING::from("Select a folder")).ok()?;
-        dialog.SetOptions(FOS_FILEMUSTEXIST | FOS_PICKFOLDERS).ok()?;
+        dialog
+            .SetOptions(FOS_FILEMUSTEXIST | FOS_PICKFOLDERS)
+            .ok()?;
 
         if let Some(path) = default_folder {
             let default_folder_item: IShellItem =
-                SHCreateItemFromParsingName(&HSTRING::from(path.as_ref().to_str().unwrap()), None).ok()?;
+                SHCreateItemFromParsingName(&HSTRING::from(path.as_ref().to_str().unwrap()), None)
+                    .ok()?;
             dialog.SetDefaultFolder(&default_folder_item).ok()?;
         }
 
@@ -89,4 +106,10 @@ pub fn is_game_running() -> bool {
     }
 
     false
+}
+
+pub fn get_system_directory() -> PathBuf {
+    let mut buffer = [0u16; MAX_PATH as usize];
+    let length = unsafe { GetSystemDirectoryW(Some(&mut buffer)) };
+    PathBuf::from(OsString::from_wide(&buffer[0..length as usize]))
 }
