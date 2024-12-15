@@ -96,14 +96,16 @@ pub fn run() -> Result<bool, installer::Error> {
             }
         }
 
-        if let Some(target) = &args.target {
-            // Check if target is an absolute path;
-            // If it is, set the install dir unconditionally so that it will be completely
-            // overridden by the target later (without relying on install dir detection)
-            let target_path = Path::new(target);
-            if target_path.is_absolute() {
-                // Doesn't matter which path it is, just use the target path
-                args.install_dir = Some(target_path.into());
+        if args.install_dir.is_none() {
+            if let Some(target) = &args.target {
+                // Check if target is an absolute path;
+                // If it is, set the install dir unconditionally so that it will be completely
+                // overridden by the target later (without relying on install dir detection)
+                let target_path = Path::new(target);
+                if target_path.is_absolute() {
+                    // Doesn't matter which path it is, just use the target path
+                    args.install_dir = Some(target_path.into());
+                }
             }
         }
 
