@@ -8,17 +8,20 @@ use windows::{
     }
 };
 
-use crate::{installer::{self, Installer}, utils};
+use crate::{installer::{self, Installer, Target}, utils};
 
 #[derive(Default)]
 struct Args {
     command: Option<Command>,
     install_dir: Option<PathBuf>,
     target: Option<String>,
+    explicit_target: Option<Target>,
     sleep: Option<u64>,
     prompt_for_game_exit: bool,
     launch_game: bool,
-    game_args: Vec<String>
+    game_args: Vec<String>,
+    pre_install: bool,
+    post_install: bool
 }
 
 enum Command {
@@ -56,9 +59,19 @@ impl Args {
 
                 "--install-dir" => args.install_dir = Some(require_next_arg(&mut iter).into()),
                 "--target" => args.target = Some(require_next_arg(&mut iter)),
+                "--explicit-target" => {
+                    let dll_name = require_next_arg(&mut iter);
+                    args.explicit_target = Some(*Target::VALUES.iter()
+                        .filter(|t| t.dll_name() == dll_name)
+                        .next()
+                        .unwrap_or_else(|| std::process::exit(128))
+                    );
+                },
                 "--sleep" => args.sleep = Some(require_next_arg(&mut iter).parse().unwrap_or_else(|_| std::process::exit(128))),
                 "--prompt-for-game-exit" => args.prompt_for_game_exit = true,
                 "--launch-game" => args.launch_game = true,
+                "--pre-install" => args.pre_install = true,
+                "--post-install" => args.post_install = true,
                 "--" => in_game_args = true,
 
                 _ => {
@@ -109,9 +122,41 @@ pub fn run() -> Result<bool, installer::Error> {
             }
         }
 
-        let installer = Installer::custom(args.install_dir, args.target);
+        let explicit_target = args.explicit_target.or_else(|| {
+            let target_name = Path::new(args.target.as_ref()?).file_name()?;
+            let target_name_str = target_name.to_string_lossy().to_ascii_lowercase();
+            for t in Target::VALUES {
+                if t.dll_name().to_ascii_lowercase() == target_name_str {
+                    return Some(*t);
+                }
+            }
+            None
+        }).unwrap_or_else(|| {
+            unsafe {
+                MessageBoxW(
+                    None,
+                    w!("Failed to determine target type. Please make sure that the path is correct \
+                        or explicitly specify a target name."),
+                    w!("Hachimi Installer"),
+                    MB_ICONERROR | MB_OK
+                );
+            }
+            std::process::exit(128);
+        });
+
+        let installer = Installer::custom(args.install_dir, explicit_target, args.target);
         let res = match command {
-            Command::Install => installer.install(),
+            Command::Install => {
+                let mut res = Ok(());
+                if args.pre_install {
+                    res = res.and_then(|_| installer.pre_install());
+                }
+                res = res.and_then(|_| installer.install());
+                if args.post_install {
+                    res = res.and_then(|_| installer.post_install());
+                }
+                res
+            },
             Command::Uninstall => installer.uninstall()
         };
         if let Err(e) = res {

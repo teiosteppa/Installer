@@ -18,9 +18,10 @@ pub fn run() -> Result<(), windows::core::Error> {
     let instance = unsafe { GetModuleHandleW(None)? };
     let dialog = unsafe {
         CreateDialogParamW(instance, IDD_MAIN, None, Some(dlg_proc), LPARAM(installer.as_mut() as *mut _ as _))
-    };
+    }?;
     utils::center_window(dialog)?;
     unsafe { _ = ShowWindow(dialog, SW_SHOW) };
+    installer.hwnd = Some(dialog);
 
     let mut message = MSG::default();
     unsafe {
@@ -49,10 +50,10 @@ fn update_target(dialog: HWND, target_combo: HWND, index: usize) {
         "None".to_owned()
     };
 
-    let installed_static = unsafe { GetDlgItem(dialog, IDC_INSTALLED) };
+    let installed_static = unsafe { GetDlgItem(dialog, IDC_INSTALLED).unwrap() };
     unsafe {
         _ = SetWindowTextW(installed_static, &HSTRING::from(format!("Installed: {}", label)));
-        _ = EnableWindow(GetDlgItem(dialog, IDC_UNINSTALL), installed);
+        _ = EnableWindow(GetDlgItem(dialog, IDC_UNINSTALL).unwrap(), installed);
     }
         
 
@@ -76,25 +77,25 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             // Set icon
             let instance = unsafe { GetModuleHandleW(None).unwrap() };
             if let Ok(icon) = LoadIconW(instance, IDI_HACHIMI) {
-                SendMessageW(dialog, WM_SETICON, WPARAM(ICON_BIG as _), LPARAM(icon.0));
+                SendMessageW(dialog, WM_SETICON, WPARAM(ICON_BIG as _), LPARAM(icon.0 as _));
                 _ = DestroyIcon(icon);
             }
 
             // Set install path
             if let Some(path) = &installer.install_dir {
-                let install_path_edit = GetDlgItem(dialog, IDC_INSTALL_PATH);
+                let install_path_edit = GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap();
                 _ = SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap()));
             }
 
             // Set packaged version
-            let packaged_ver_static = GetDlgItem(dialog, IDC_PACKAGED_VER);
+            let packaged_ver_static = GetDlgItem(dialog, IDC_PACKAGED_VER).unwrap();
             _ = SetWindowTextW(
                 packaged_ver_static,
                 &HSTRING::from(format!("Packaged version: {}", env!("HACHIMI_VERSION")))
             );
 
             // Init targets
-            let target_combo = GetDlgItem(dialog, IDC_TARGET);
+            let target_combo = GetDlgItem(dialog, IDC_TARGET).unwrap();
             let mut default_target = 0;
             let mut default_target_set = false;
             let mut multiple_installs = false;
@@ -147,7 +148,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
         WM_COMMAND => {
             let control_id = wparam.0 as i16 as i32;
             let notif_code = wparam.0 as u32 >> 16;
-            let control = HWND(lparam.0);
+            let control = HWND(lparam.0 as _);
 
             match control_id {
                 IDC_INSTALL_PATH_BROWSE => {
@@ -159,11 +160,11 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                         return 1;
                     };
 
-                    let install_path_edit = GetDlgItem(dialog, IDC_INSTALL_PATH);
+                    let install_path_edit = GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap();
                     _ = SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap()));
 
                     installer.install_dir = Some(path);
-                    update_target(dialog, GetDlgItem(dialog, IDC_TARGET), installer.target as _);
+                    update_target(dialog, GetDlgItem(dialog, IDC_TARGET).unwrap(), installer.target as _);
                 }
 
                 IDC_TARGET => {
@@ -197,7 +198,10 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             return 0;
                         }
                     }
-                    match installer.install() {
+                    match installer.pre_install()
+                        .and_then(|_| installer.install())
+                        .and_then(|_| installer.post_install())
+                    {
                         Ok(_) => {
                             MessageBoxW(dialog, w!("Install completed."), w!("Success"), MB_ICONINFORMATION | MB_OK);
                         },
@@ -205,7 +209,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             MessageBoxW(dialog, &HSTRING::from(e.to_string()), w!("Error"), MB_ICONERROR | MB_OK);
                         }
                     }
-                    update_target(dialog, GetDlgItem(dialog, IDC_TARGET), installer.target as _);
+                    update_target(dialog, GetDlgItem(dialog, IDC_TARGET).unwrap(), installer.target as _);
                 }
 
                 IDC_UNINSTALL => {
@@ -222,7 +226,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             MessageBoxW(dialog, &HSTRING::from(e.to_string()), w!("Error"), MB_ICONERROR | MB_OK);
                             return 0;
                         }
-                        update_target(dialog, GetDlgItem(dialog, IDC_TARGET), installer.target as _);
+                        update_target(dialog, GetDlgItem(dialog, IDC_TARGET).unwrap(), installer.target as _);
 
                         if let Some(version_info) = version_info_opt {
                             if !version_info.is_hachimi() {
@@ -234,13 +238,11 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             let Ok(metadata) = std::fs::metadata(&hachimi_dir) else {
                                 return 0;
                             };
-                            
+
                             if metadata.is_dir() {
                                 let res = MessageBoxW(
                                     dialog,
-                                    w!("Do you also want to delete Hachimi's data directory? \
-                                        The game may crash if it is present without Hachimi.\n\
-                                        If unsure, choose Yes."),
+                                    w!("Do you also want to delete Hachimi's data directory?"),
                                     w!("Uninstall"),
                                     MB_ICONINFORMATION | MB_YESNO
                                 );

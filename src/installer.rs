@@ -1,8 +1,9 @@
 use std::{fs::File, io::Write, path::{Path, PathBuf}};
 
 use pelite::resources::version_info::Language;
+use registry::Hive;
 use tinyjson::JsonValue;
-use windows::Win32::UI::Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT};
+use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
 
 use crate::utils::{self, get_system_directory};
 
@@ -10,16 +11,18 @@ pub struct Installer {
     pub install_dir: Option<PathBuf>,
     pub target: Target,
     pub custom_target: Option<String>,
-    system_dir: PathBuf
+    system_dir: PathBuf,
+    pub hwnd: Option<HWND>
 }
 
 impl Installer {
-    pub fn custom(install_dir: Option<PathBuf>, target: Option<String>) -> Installer {
+    pub fn custom(install_dir: Option<PathBuf>, target: Target, custom_target: Option<String>) -> Installer {
         Installer {
             install_dir: install_dir.or_else(Self::detect_install_dir),
-            target: Target::default(),
-            custom_target: target,
-            system_dir: get_system_directory()
+            target,
+            custom_target,
+            system_dir: get_system_directory(),
+            hwnd: None
         }
     }
 
@@ -68,30 +71,29 @@ impl Installer {
         None
     }
 
-    pub fn get_target_path(&self, target: Target) -> PathBuf {
-        self.system_dir.join(target.dll_name())
+    fn get_target_path_internal(&self, target: Target, p: impl AsRef<Path>) -> Option<PathBuf> {
+        Some(match TargetType::from(target) {
+            TargetType::DotLocal => self.install_dir.as_ref()?.join("umamusume.exe.local").join(p),
+            TargetType::PluginShim => self.system_dir.join(p)
+        })
     }
 
-    pub fn get_current_target_path(&self) -> PathBuf {
-        if let Some(custom_target) = &self.custom_target {
-            self.system_dir.join(custom_target)
+    pub fn get_target_path(&self, target: Target) -> Option<PathBuf> {
+        self.get_target_path_internal(target, target.dll_name())
+    }
+
+    pub fn get_current_target_path(&self) -> Option<PathBuf> {
+        self.get_target_path_internal(self.target, if let Some(custom_target) = &self.custom_target {
+            custom_target
         }
         else {
-            self.system_dir.join(self.target.dll_name())
-        }
-    }
-
-    pub fn get_dest_dll_path(&self) -> Option<PathBuf> {
-        Some(self.install_dir.as_ref()?.join(format!("hachimi\\{}", self.target.dll_name())))
-    }
-
-    pub fn get_src_dll_path(&self) -> Option<PathBuf> {
-        Some(self.install_dir.as_ref()?.join(format!("umamusume_Data\\Plugins\\x86_64\\{}", self.target.dll_name())))
+            self.target.dll_name()
+        })
     }
 
     const LANG_NEUTRAL_UNICODE: Language = Language { lang_id: 0x0000, charset_id: 0x04b0 };
     pub fn get_target_version_info(&self, target: Target) -> Option<TargetVersionInfo> {
-        let path = self.get_target_path(target);
+        let path = self.get_target_path(target)?;
         let map = pelite::FileMap::open(&path).ok()?;
 
         // File exists, so return empty version info if we can't read it
@@ -115,7 +117,9 @@ impl Installer {
     }
 
     pub fn is_current_target_installed(&self) -> bool {
-        let path = self.get_current_target_path();
+        let Some(path) = self.get_current_target_path() else {
+            return false;
+        };
 
         let Ok(metadata) = std::fs::metadata(&path) else {
             return false;
@@ -135,16 +139,22 @@ impl Installer {
         None
     }
 
-    pub fn install(&self) -> Result<(), Error> {
-        // Verify install dir first
-        let dest_dll = self.get_dest_dll_path().ok_or(Error::NoInstallDir)?;
-        let src_dll = self.get_src_dll_path().ok_or(Error::NoInstallDir)?;
+    pub fn pre_install(&self) -> Result<(), Error> {
+        if TargetType::from(self.target) == TargetType::PluginShim {
+            let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
+            let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
 
-        if !dest_dll.exists() && !src_dll.exists() {
-            return Err(Error::CannotFindTarget);
+            if !dest_dll.exists() && !src_dll.exists() {
+                return Err(Error::CannotFindTarget);
+            }
         }
 
-        let path = self.get_current_target_path();
+        Ok(())
+    }
+
+    pub fn install(&self) -> Result<(), Error> {
+        let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
+        std::fs::create_dir_all(path.parent().unwrap())?;
         let mut file = File::create(&path)?;
 
         #[cfg(feature = "compress_dll")]
@@ -153,28 +163,96 @@ impl Installer {
         #[cfg(not(feature = "compress_dll"))]
         file.write(include_bytes!("../hachimi.dll"))?;
 
-        if src_dll.exists() {
-            std::fs::create_dir_all(dest_dll.parent().unwrap())?;
-            std::fs::copy(&src_dll, &dest_dll)?;
-            std::fs::remove_file(&src_dll)?;
+        Ok(())
+    }
+
+    pub fn post_install(&self) -> Result<(), Error> {
+        match TargetType::from(self.target) {
+            TargetType::DotLocal => {
+                match Hive::LocalMachine.open(
+                    r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options",
+                    registry::Security::Read | registry::Security::SetValue
+                ) {
+                    Ok(regkey) => {
+                        if regkey.value("DevOverrideEnable").ok()
+                            .map(|v| !matches!(v, registry::Data::U32(..)))
+                            .unwrap_or(true)
+                        {
+                            let res = unsafe {
+                                MessageBoxW(
+                                    self.hwnd.as_ref(),
+                                    w!("DotLocal DLL redirection is not enabled. This is required for the specified install target.\n\
+                                        Would you like to enable it?"),
+                                    w!("Install"),
+                                    MB_ICONINFORMATION | MB_OKCANCEL
+                                )
+                            };
+                            if res == IDOK {
+                                regkey.set_value("DevOverrideEnable", &registry::Data::U32(1))?;
+                                unsafe {
+                                    MessageBoxW(
+                                        self.hwnd.as_ref(),
+                                        w!("Restart your computer to apply the changes."),
+                                        w!("DLL redirection enabled"),
+                                        MB_ICONINFORMATION | MB_OK
+                                    );
+                                }
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        unsafe { MessageBoxW(
+                            self.hwnd.as_ref(),
+                            &HSTRING::from(format!("Failed to open IFEO registry key: {}", e)),
+                            w!("Warning"),
+                            MB_OK | MB_ICONWARNING
+                        )};
+                    }
+                }
+            },
+            TargetType::PluginShim => {
+                let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
+                let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
+
+                if src_dll.exists() {
+                    std::fs::create_dir_all(dest_dll.parent().unwrap())?;
+                    std::fs::copy(&src_dll, &dest_dll)?;
+                    std::fs::remove_file(&src_dll)?;
+                }
+            }
         }
 
         Ok(())
     }
 
     pub fn uninstall(&self) -> Result<(), Error> {
-        let dest_dll = self.get_dest_dll_path().ok_or(Error::NoInstallDir)?;
-        let src_dll = self.get_src_dll_path().ok_or(Error::NoInstallDir)?;
-
-        let path = self.get_current_target_path();
+        let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
         std::fs::remove_file(&path)?;
 
-        if !src_dll.exists() {
-            std::fs::copy(&dest_dll, &src_dll)?;
-            std::fs::remove_file(&dest_dll)?;
+        match TargetType::from(self.target) {
+            TargetType::DotLocal => {
+                // Only remove if its empty
+                _ = std::fs::remove_dir(path.parent().unwrap());
+            },
+            TargetType::PluginShim => {
+                let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
+                let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
+                if !src_dll.exists() {
+                    std::fs::copy(&dest_dll, &src_dll)?;
+                    std::fs::remove_file(&dest_dll)?;
+                }
+            }
         }
 
         Ok(())
+    }
+
+    pub fn get_dest_plugin_path(&self) -> Option<PathBuf> {
+        Some(self.install_dir.as_ref()?.join(format!("hachimi\\{}", self.target.dll_name())))
+    }
+
+    pub fn get_src_plugin_path(&self) -> Option<PathBuf> {
+        Some(self.install_dir.as_ref()?.join(format!("umamusume_Data\\Plugins\\x86_64\\{}", self.target.dll_name())))
     }
 }
 
@@ -184,21 +262,27 @@ impl Default for Installer {
             install_dir: Self::detect_install_dir(),
             target: Target::default(),
             custom_target: None,
-            system_dir: get_system_directory()
+            system_dir: get_system_directory(),
+            hwnd: None
         }
     }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Target {
+    UnityPlayer,
     CriManaVpx
 }
 
 impl Target {
-    pub const VALUES: &[Self] = &[Self::CriManaVpx];
+    pub const VALUES: &[Self] = &[
+        Self::UnityPlayer,
+        Self::CriManaVpx
+    ];
 
     pub fn dll_name(&self) -> &'static str {
         match self {
+            Self::UnityPlayer => "UnityPlayer.dll",
             Self::CriManaVpx => "cri_mana_vpx.dll"
         }
     }
@@ -206,7 +290,22 @@ impl Target {
 
 impl Default for Target {
     fn default() -> Self {
-        Self::CriManaVpx
+        Self::UnityPlayer
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum TargetType {
+    DotLocal,
+    PluginShim
+}
+
+impl From<Target> for TargetType {
+    fn from(value: Target) -> Self {
+        match value {
+            Target::UnityPlayer => Self::DotLocal,
+            Target::CriManaVpx => Self::PluginShim,
+        }
     }
 }
 
@@ -234,7 +333,8 @@ impl TargetVersionInfo {
 pub enum Error {
     NoInstallDir,
     CannotFindTarget,
-    IoError(std::io::Error)
+    IoError(std::io::Error),
+    RegistryValueError(registry::value::Error)
 }
 
 impl std::fmt::Display for Error {
@@ -242,7 +342,8 @@ impl std::fmt::Display for Error {
         match self {
             Error::NoInstallDir => write!(f, "No install location specified"),
             Error::CannotFindTarget => write!(f, "Cannot find target DLL in specified install location"),
-            Error::IoError(error) => write!(f, "I/O error: {}", error)
+            Error::IoError(e) => write!(f, "I/O error: {}", e),
+            Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e)
         }
     }
 }
@@ -250,5 +351,11 @@ impl std::fmt::Display for Error {
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
         Error::IoError(e)
+    }
+}
+
+impl From<registry::value::Error> for Error {
+    fn from(e: registry::value::Error) -> Self {
+        Error::RegistryValueError(e)
     }
 }
