@@ -5,12 +5,13 @@ use registry::Hive;
 use tinyjson::JsonValue;
 use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
 
-use crate::utils;
+use crate::utils::{self, get_system_directory};
 
 pub struct Installer {
     pub install_dir: Option<PathBuf>,
     pub target: Target,
     pub custom_target: Option<String>,
+    system_dir: PathBuf,
     pub hwnd: Option<HWND>
 }
 
@@ -20,6 +21,7 @@ impl Installer {
             install_dir: install_dir.or_else(Self::detect_install_dir),
             target,
             custom_target,
+            system_dir: get_system_directory(),
             hwnd: None
         }
     }
@@ -69,8 +71,11 @@ impl Installer {
         None
     }
 
-    fn get_target_path_internal(&self, _target: Target, p: impl AsRef<Path>) -> Option<PathBuf> {
-        Some(self.install_dir.as_ref()?.join("umamusume.exe.local").join(p))
+    fn get_target_path_internal(&self, target: Target, p: impl AsRef<Path>) -> Option<PathBuf> {
+        Some(match TargetType::from(target) {
+            TargetType::DotLocal => self.install_dir.as_ref()?.join("umamusume.exe.local").join(p),
+            TargetType::PluginShim => self.system_dir.join(p)
+        })
     }
 
     pub fn get_target_path(&self, target: Target) -> Option<PathBuf> {
@@ -135,6 +140,15 @@ impl Installer {
     }
 
     pub fn pre_install(&self) -> Result<(), Error> {
+        if TargetType::from(self.target) == TargetType::PluginShim {
+            let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
+            let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
+
+            if !dest_dll.exists() && !src_dll.exists() {
+                return Err(Error::CannotFindTarget);
+            }
+        }
+
         Ok(())
     }
 
@@ -169,6 +183,7 @@ impl Installer {
                 #[cfg(not(feature = "compress_dll"))]
                 file.write(include_bytes!("../cellar.dll"))?;
 
+                // Check for DLL redirection
                 match Hive::LocalMachine.open(
                     r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options",
                     registry::Security::Read | registry::Security::SetValue
@@ -213,6 +228,16 @@ impl Installer {
                         )};
                     }
                 }
+            },
+            TargetType::PluginShim => {
+                let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
+                let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
+
+                if src_dll.exists() {
+                    std::fs::create_dir_all(dest_dll.parent().unwrap())?;
+                    std::fs::copy(&src_dll, &dest_dll)?;
+                    std::fs::remove_file(&src_dll)?;
+                }
             }
         }
 
@@ -225,12 +250,33 @@ impl Installer {
 
         match TargetType::from(self.target) {
             TargetType::DotLocal => {
+                let parent = path.parent().unwrap();
+
+                // Also delete Cellar
+                _ = std::fs::remove_file(parent.join("apphelp.dll"));
+
                 // Only remove if its empty
-                _ = std::fs::remove_dir(path.parent().unwrap());
+                _ = std::fs::remove_dir(parent);
+            },
+            TargetType::PluginShim => {
+                let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
+                let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
+                if !src_dll.exists() {
+                    std::fs::copy(&dest_dll, &src_dll)?;
+                    std::fs::remove_file(&dest_dll)?;
+                }
             }
         }
 
         Ok(())
+    }
+
+    pub fn get_dest_plugin_path(&self) -> Option<PathBuf> {
+        Some(self.install_dir.as_ref()?.join(format!("hachimi\\{}", self.target.dll_name())))
+    }
+
+    pub fn get_src_plugin_path(&self) -> Option<PathBuf> {
+        Some(self.install_dir.as_ref()?.join(format!("umamusume_Data\\Plugins\\x86_64\\{}", self.target.dll_name())))
     }
 }
 
@@ -240,6 +286,7 @@ impl Default for Installer {
             install_dir: Self::detect_install_dir(),
             target: Target::default(),
             custom_target: None,
+            system_dir: get_system_directory(),
             hwnd: None
         }
     }
@@ -247,17 +294,20 @@ impl Default for Installer {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Target {
-    UnityPlayer
+    UnityPlayer,
+    CriManaVpx
 }
 
 impl Target {
     pub const VALUES: &[Self] = &[
-        Self::UnityPlayer
+        Self::UnityPlayer,
+        Self::CriManaVpx
     ];
 
     pub fn dll_name(&self) -> &'static str {
         match self {
-            Self::UnityPlayer => "UnityPlayer.dll"
+            Self::UnityPlayer => "UnityPlayer.dll",
+            Self::CriManaVpx => "cri_mana_vpx.dll"
         }
     }
 }
@@ -270,13 +320,15 @@ impl Default for Target {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum TargetType {
-    DotLocal
+    DotLocal,
+    PluginShim
 }
 
 impl From<Target> for TargetType {
     fn from(value: Target) -> Self {
         match value {
-            Target::UnityPlayer => Self::DotLocal
+            Target::UnityPlayer => Self::DotLocal,
+            Target::CriManaVpx => Self::PluginShim,
         }
     }
 }
@@ -304,7 +356,7 @@ impl TargetVersionInfo {
 #[derive(Debug)]
 pub enum Error {
     NoInstallDir,
-    //CannotFindTarget,
+    CannotFindTarget,
     IoError(std::io::Error),
     RegistryValueError(registry::value::Error)
 }
@@ -313,7 +365,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::NoInstallDir => write!(f, "No install location specified"),
-            //Error::CannotFindTarget => write!(f, "Cannot find target DLL in specified install location"),
+            Error::CannotFindTarget => write!(f, "Cannot find target DLL in specified install location"),
             Error::IoError(e) => write!(f, "I/O error: {}", e),
             Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e)
         }
