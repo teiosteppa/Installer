@@ -14,8 +14,8 @@ pub use crate::i18n::_rust_i18n_translate;
 extern crate include_bytes_zstd;
 
 fn main() -> Result<(), installer::Error> {
-    // Set default language as English
-    i18n::set_locale("en-US");
+    // Set language by system language
+    i18n::init_locale();
 
     // Command line interface / Unattended mode
     if cli::run()? { return Ok(()); }

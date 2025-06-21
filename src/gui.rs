@@ -1,5 +1,5 @@
 use crate::{installer::{self, Installer}, resource::*, utils};
-use crate::i18n::{self, t};
+use crate::i18n::{self, SUPPORTED_LOCALES, t};
 use windows::{core::{HSTRING}, Win32::{
     Foundation::{HWND, LPARAM, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
@@ -10,7 +10,7 @@ use windows::{core::{HSTRING}, Win32::{
         CBN_SELCHANGE, CB_ADDSTRING, CB_DELETESTRING, CB_GETCURSEL, CB_INSERTSTRING, CB_SETCURSEL,
         GWLP_USERDATA, ICON_BIG, IDOK, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONWARNING,
         MB_OK, MB_OKCANCEL, MB_YESNO, MSG, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_INITDIALOG, WM_SETICON
-    }}
+    }},
 }};
 
 fn localize_controls(dialog: HWND) {
@@ -115,9 +115,14 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
 
             // Init language combo
             let lang_combo = GetDlgItem(dialog, IDC_LANGUAGE_COMBO).unwrap();
-            SendMessageW(lang_combo, CB_ADDSTRING, None, LPARAM(HSTRING::from(t!("gui.lang_en")).as_ptr() as _));
-            SendMessageW(lang_combo, CB_ADDSTRING, None, LPARAM(HSTRING::from(t!("gui.lang_zh-CN")).as_ptr() as _));
-            SendMessageW(lang_combo, CB_ADDSTRING, None, LPARAM(HSTRING::from(t!("gui.lang_zh-TW")).as_ptr() as _));
+            for (idx, (_, _, gui_label)) in SUPPORTED_LOCALES.iter().enumerate() {
+                SendMessageW(
+                    lang_combo, CB_ADDSTRING, None,
+                    LPARAM(HSTRING::from(*gui_label).as_ptr() as _));
+                if SUPPORTED_LOCALES[idx].0 == *i18n::CURRENT_LOCALE.lock().unwrap() {
+                    SendMessageW(lang_combo, CB_SETCURSEL, WPARAM(idx), None);
+                }
+            }
 
             let cur = i18n::CURRENT_LOCALE.lock().unwrap().clone();
             let idx = if cur == "zh-CN" { 1 } else { 0 };
@@ -176,24 +181,18 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
         WM_COMMAND => {
             let control_id = wparam.0 as i16 as i32;
             let notif_code = wparam.0 as u32 >> 16;
+            let ncode = ((wparam.0 >> 16) & 0xFFFF) as u32;
             let control = HWND(lparam.0 as _);
 
             match control_id {
-                IDC_LANGUAGE_COMBO if notif_code == CBN_SELCHANGE => {
-                    let idx = SendMessageW(control, CB_GETCURSEL, None, None).0 as usize;
-                    match idx {
-                        0 => i18n::set_locale("en-US"),
-                        1 => i18n::set_locale("zh-CN"),
-                        2 => i18n::set_locale("zh-TW"),
-                        _ => {}
-                    }
-                    // Reflash texts
+                IDC_LANGUAGE_COMBO if ncode == CBN_SELCHANGE => {
+                    let combo = GetDlgItem(dialog, IDC_LANGUAGE_COMBO).unwrap();
+                    let idx   = SendMessageW(combo, CB_GETCURSEL, WPARAM(0), LPARAM(0)).0 as usize;
+                    i18n::set_locale(SUPPORTED_LOCALES[idx].0);
                     localize_controls(dialog);
-
                     update_target(dialog, GetDlgItem(dialog, IDC_TARGET).unwrap(),
                                   get_installer(dialog).target as _);
                 }
-
                 IDC_INSTALL_PATH_BROWSE => {
                     let installer = get_installer(dialog);
                     let Some(path) = utils::open_select_folder_dialog(

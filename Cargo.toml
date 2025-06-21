@@ -25,7 +25,8 @@ features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_Foundation",
-    "Win32_UI"
+    "Win32_UI",
+    "Win32_Globalization"
 ]
 
 [build-dependencies]
