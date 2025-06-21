@@ -3,7 +3,7 @@ gui:
   install:              "安裝"
   uninstall:            "解除安裝"
   browse:               "瀏覽..."
-  installed:            "已安裝版本：%{ver}"
+  installed:            "已安裝：%{ver}"
   packaged_ver:         "封裝版本：%{ver}"
   install_location:     "安裝位置"
   target:               "目標"
