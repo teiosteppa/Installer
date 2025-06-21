@@ -1,5 +1,5 @@
 use std::{ffi::{CStr, OsString}, os::windows::ffi::OsStringExt, path::{Path, PathBuf}};
-
+use crate::i18n::{t};
 use pelite::resources::version_info::VersionInfo;
 use windows::{
     core::HSTRING,
@@ -67,7 +67,7 @@ pub fn open_select_folder_dialog<P: AsRef<Path>>(
         unsafe { CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()? };
 
     unsafe {
-        dialog.SetTitle(&HSTRING::from("Select a folder")).ok()?;
+        dialog.SetTitle(&HSTRING::from(t!("util.select_folder"))).ok()?;
         dialog
             .SetOptions(FOS_FILEMUSTEXIST | FOS_PICKFOLDERS)
             .ok()?;

@@ -3,7 +3,8 @@ use std::{fs::File, io::Write, path::{Path, PathBuf}};
 use pelite::resources::version_info::Language;
 use registry::Hive;
 use tinyjson::JsonValue;
-use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
+use crate::i18n::t;
+use windows::{core::{HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
 
 use crate::utils::{self, get_system_directory};
 
@@ -200,9 +201,8 @@ impl Installer {
                             let res = unsafe {
                                 MessageBoxW(
                                     self.hwnd.as_ref(),
-                                    w!("DotLocal DLL redirection is not enabled. This is required for the specified install target.\n\
-                                        Would you like to enable it?"),
-                                    w!("Install"),
+                                    &HSTRING::from(t!("installer.dotlocal_not_enabled")),
+                                    &HSTRING::from(t!("installer.install")),
                                     MB_ICONINFORMATION | MB_OKCANCEL
                                 )
                             };
@@ -211,8 +211,8 @@ impl Installer {
                                 unsafe {
                                     MessageBoxW(
                                         self.hwnd.as_ref(),
-                                        w!("Restart your computer to apply the changes."),
-                                        w!("DLL redirection enabled"),
+                                        &HSTRING::from(t!("installer.restart_to_apply")),
+                                        &HSTRING::from(t!("installer.dll_redirection_enabled")),
                                         MB_ICONINFORMATION | MB_OK
                                     );
                                 }
@@ -222,8 +222,8 @@ impl Installer {
                     Err(e) => {
                         unsafe { MessageBoxW(
                             self.hwnd.as_ref(),
-                            &HSTRING::from(format!("Failed to open IFEO registry key: {}", e)),
-                            w!("Warning"),
+                            &HSTRING::from(t!("installer.failed_open_ifeo", error = e)),
+                            &HSTRING::from(t!("installer.warning")),
                             MB_OK | MB_ICONWARNING
                         )};
                     }
@@ -364,10 +364,10 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::NoInstallDir => write!(f, "No install location specified"),
-            Error::CannotFindTarget => write!(f, "Cannot find target DLL in specified install location"),
-            Error::IoError(e) => write!(f, "I/O error: {}", e),
-            Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e)
+            Error::NoInstallDir => write!(f, "{}", t!("error.no_install_dir")),
+            Error::CannotFindTarget => write!(f, "{}", t!("error.cannot_find_target")),
+            Error::IoError(e) => write!(f, "{}", t!("error.io_error", error = e)),
+            Error::RegistryValueError(e) => write!(f, "{}", t!("error.registry_value_error", error = e)),
         }
     }
 }
