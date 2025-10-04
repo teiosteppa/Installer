@@ -101,7 +101,7 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: target/release/hachimi_installer.exe
-          asset_name: hachimi-installer-windows.exe
+          asset_name: hachimi_installer.exe
           tag: nightly
           overwrite: true
           body: "Latest nightly build from commit ${{ github.sha }}"
