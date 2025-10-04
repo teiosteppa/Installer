@@ -52,12 +52,12 @@ jobs:
           toolchain: stable
 
       - name: Build Hachimi-Edge
-        run: cargo build --release --target-dir ../target
+        run: RUSTFLAGS="-A dead_code -A non_snake_case -A unnecessary_transmutes" cargo build --release --target-dir ../target
         working-directory: ./Hachimi-Edge
         shell: bash
 
       - name: Build Cellar
-        run: RUSTFLAGS="-A non_snake_case -A unnecessary_transmutes" cargo build --release
+        run: cargo build --release
         working-directory: ./Cellar
         shell: bash
 
