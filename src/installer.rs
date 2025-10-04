@@ -70,10 +70,10 @@ impl Installer {
 
         None
     }
-
+    //something exe something something
     fn get_target_path_internal(&self, target: Target, p: impl AsRef<Path>) -> Option<PathBuf> {
         Some(match TargetType::from(target) {
-            TargetType::DotLocal => self.install_dir.as_ref()?.join("umamusume.exe.local").join(p),
+            TargetType::DotLocal => self.install_dir.as_ref()?.join("UmamusumePrettyDerby_Jpn.exe.local").join(p),
             TargetType::PluginShim => self.system_dir.join(p)
         })
     }
@@ -163,6 +163,27 @@ impl Installer {
         #[cfg(not(feature = "compress_dll"))]
         file.write(include_bytes!("../hachimi.dll"))?;
 
+        let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
+        std::fs::create_dir_all(path.parent().unwrap())?;
+        let mut file = File::create(&path)?;
+
+        #[cfg(feature = "compress_dll")]
+        file.write(&include_bytes_zstd!("hachimi.dll", 19))?;
+
+        #[cfg(not(feature = "compress_dll"))]
+        file.write(include_bytes!("../hachimi.dll"))?;
+
+
+       
+        let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
+
+        //something exe idk
+        let exe_dest = install_path.join("UmamusumePrettyDerby_Jpn.exe");
+        std::fs::create_dir_all(exe_dest.parent().unwrap())?;
+        let mut exe_file = File::create(&exe_dest)?;
+        // i had to ask flippin gemini what i was supposed to do here
+        exe_file.write(include_bytes!("../UmamusumePrettyDerby_Jpn.exe"))?; 
+
         Ok(())
     }
 
@@ -172,7 +193,7 @@ impl Installer {
                 // Install Cellar
                 let path = self.install_dir.as_ref()
                     .ok_or_else(|| Error::NoInstallDir)?
-                    .join("umamusume.exe.local")
+                    .join("UmamusumePrettyDerby_Jpn.exe.local")
                     .join("apphelp.dll");
                 std::fs::create_dir_all(path.parent().unwrap())?;
                 let mut file = File::create(&path)?;
