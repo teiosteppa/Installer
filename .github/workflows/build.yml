@@ -70,7 +70,7 @@ jobs:
         shell: bash
 
       - name: Build Installer
-        run: cargo build --release
+        run: cargo build --release --features compress_dll
         shell: bash
 
       - name: Show sccache stats

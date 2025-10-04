@@ -163,6 +163,38 @@ impl Installer {
         #[cfg(not(feature = "compress_dll"))]
         file.write(include_bytes!("../hachimi.dll"))?;
 
+        let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
+        let exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
+
+        const EXPECTED_ORIGINAL_HASH: &str = "2173ea1e399a00b680ecfffc5b297ed1c29065f256a2f8b91ebcb66bc6315eb0";
+
+        let mut original_exe_file = File::open(&exe_path)?;
+
+        let mut hasher = Sha256::new();
+        std::io::copy(&mut original_exe_file, &mut hasher)?;
+        let found_hash = hasher.finalize();
+        let found_hash_str = format!("{:x}", found_hash);
+
+        if found_hash_str.to_lowercase() != EXPECTED_ORIGINAL_HASH.to_lowercase() {
+            return Err(Error::VerificationError(format!(
+                "EXE hash mismatch. Expected {}, found {}",
+                EXPECTED_ORIGINAL_HASH,
+                found_hash_str
+            )));
+        }
+
+        original_exe_file.seek(SeekFrom::Start(0))?;
+
+        let patch_data = include_bytes!("../umamusume.patch");
+
+        let temp_exe_path = exe_path.with_extension("exe.tmp");
+        let mut temp_exe_file = File::create(&temp_exe_path)?;
+
+        bspatch::apply(&original_exe_file, &mut std::io::Cursor::new(patch_data), &mut temp_exe_file)?;
+
+        std::fs::remove_file(&exe_path)?;
+        std::fs::rename(&temp_exe_path, &exe_path)?;
+
         Ok(())
     }
 
@@ -358,7 +390,9 @@ pub enum Error {
     NoInstallDir,
     CannotFindTarget,
     IoError(std::io::Error),
-    RegistryValueError(registry::value::Error)
+    RegistryValueError(registry::value::Error),
+    VerificationError(String),
+    PatchError(bspatch::PatchError),
 }
 
 impl std::fmt::Display for Error {
@@ -367,7 +401,9 @@ impl std::fmt::Display for Error {
             Error::NoInstallDir => write!(f, "No install location specified"),
             Error::CannotFindTarget => write!(f, "Cannot find target DLL in specified install location"),
             Error::IoError(e) => write!(f, "I/O error: {}", e),
-            Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e)
+            Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e),
+            Error::VerificationError(s) => write!(f, "File verification failed: {}", s),
+            Error::PatchError(e) => write!(f, "Failed to apply patch: {}", e),
         }
     }
 }
@@ -381,5 +417,11 @@ impl From<std::io::Error> for Error {
 impl From<registry::value::Error> for Error {
     fn from(e: registry::value::Error) -> Self {
         Error::RegistryValueError(e)
+    }
+}
+
+impl From<bspatch::PatchError> for Error {
+    fn from(e: bspatch::PatchError) -> Self {
+        Error::PatchError(e)
     }
 }
