@@ -1,0 +1,80 @@
+name: Build and Release Installer
+
+on:
+  push:
+    branches: [ "main" ]
+
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTC_WRAPPER: sccache
+
+jobs:
+  build:
+    name: Build Installer on Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Installer repository
+        uses: actions/checkout@v4
+
+      - name: Checkout Hachimi-Edge repository
+        uses: actions/checkout@v4
+        with:
+          repository: kairusds/Hachimi-Edge
+          path: Hachimi-Edge
+
+      - name: Checkout Cellar repository
+        uses: actions/checkout@v4
+        with:
+          repository: Hachimi-Hachimi/Cellar
+          path: Cellar
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.5
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            Cellar/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('Hachimi-Edge/Cargo.lock') }}-${{ hashFiles('Cellar/Cargo.lock') }}
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Build Hachimi-Edge
+        run: cargo build --release --target-dir ../target
+        working-directory: ./Hachimi-Edge
+        shell: bash
+
+      - name: Build Cellar
+        run: cargo build --release
+        working-directory: ./Cellar
+        shell: bash
+
+      - name: Copy cellar.dll to root
+        run: cp Cellar/target/release/cellar.dll .
+        shell: bash
+
+      - name: Build Installer
+        run: cargo build --release
+        shell: bash
+
+      - name: Show sccache stats
+        run: sccache --show-stats
+        shell: bash
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-windows
+          path: target/release/hachimi_installer.exe
