@@ -82,3 +82,26 @@ jobs:
         with:
           name: installer-windows
           path: target/release/hachimi_installer.exe
+
+      - name: Update Nightly Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag -d nightly || true
+          git push origin --delete nightly || true
+
+          git tag nightly
+
+          git push origin nightly
+        shell: bash
+
+      - name: Upload to Nightly Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: target/release/hachimi_installer.exe
+          asset_name: hachimi-installer-windows.exe
+          tag: nightly
+          overwrite: true
+          body: "Latest nightly build from commit ${{ github.sha }}"
