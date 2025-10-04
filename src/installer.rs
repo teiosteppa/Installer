@@ -20,7 +20,9 @@ pub struct Installer {
 impl Installer {
     pub fn custom(install_dir: Option<PathBuf>, target: Target, custom_target: Option<String>) -> Installer {
         Installer {
-            install_dir: install_dir.or_else(Self::detect_install_dir),
+            install_dir: install_dir
+                .or_else(Self::detect_dmm_install_dir)
+                .or_else(Self::detect_steam_install_dir),
             target,
             custom_target,
             system_dir: get_system_directory(),
@@ -28,7 +30,7 @@ impl Installer {
         }
     }
 
-    fn detect_install_dir() -> Option<PathBuf> {
+    fn detect_dmm_install_dir() -> Option<PathBuf> {
         let app_data_dir_wstr = unsafe { SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_DEFAULT, None).ok()? };
         let app_data_dir_str = unsafe { app_data_dir_wstr.to_string().ok()? };
         let app_data_dir = Path::new(&app_data_dir_str);
@@ -71,6 +73,24 @@ impl Installer {
         }
 
         None
+    }
+
+    fn detect_steam_install_dir() -> Option<PathBuf> {
+        const STEAM_APP_ID: &str = "3564400";
+        let uninstall_key_path = format!(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App {}", STEAM_APP_ID);
+
+        let hklm = Hive::LocalMachine;
+        let uninstall_key = hklm.open(uninstall_key_path, registry::Security::Read).ok()?;
+
+        let install_path_str: String = uninstall_key.value("InstallLocation").ok()?;
+
+        let path = PathBuf::from(install_path_str);
+
+        if path.join("UmamusumePrettyDerby_Jpn.exe").is_file() {
+            Some(path)
+        } else {
+            None
+        }
     }
 
     fn get_target_path_internal(&self, target: Target, p: impl AsRef<Path>) -> Option<PathBuf> {
@@ -363,7 +383,7 @@ impl Installer {
 impl Default for Installer {
     fn default() -> Installer {
         Installer {
-            install_dir: Self::detect_install_dir(),
+            install_dir: Self::detect_dmm_install_dir(),
             target: Target::default(),
             custom_target: None,
             system_dir: get_system_directory(),
