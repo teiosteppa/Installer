@@ -57,7 +57,7 @@ jobs:
         shell: bash
 
       - name: Build Cellar
-        run: cargo build --release
+        run: RUSTFLAGS="-A non_snake_case -A unnecessary_transmutes" cargo build --release
         working-directory: ./Cellar
         shell: bash
 
