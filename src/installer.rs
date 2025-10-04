@@ -5,7 +5,7 @@ use pelite::resources::version_info::Language;
 use registry::Hive;
 use sha2::{Digest, Sha256};
 use tinyjson::JsonValue;
-use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
+use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, IDYES, MB_ICONINFORMATION, MB_ICONWARNING, MB_ICONQUESTION, MB_OK, MB_OKCANCEL, MB_YESNO}}}};
 
 use crate::utils::{self, get_system_directory};
 
@@ -82,12 +82,16 @@ impl Installer {
         let hklm = Hive::LocalMachine;
         let uninstall_key = hklm.open(uninstall_key_path, registry::Security::Read).ok()?;
 
-        let install_path_str: String = uninstall_key.value("InstallLocation").ok()?;
-
-        let path = PathBuf::from(install_path_str);
-
-        if path.join("UmamusumePrettyDerby_Jpn.exe").is_file() {
-            Some(path)
+        let install_path_data = uninstall_key.value("InstallLocation").ok()?;
+        if let registry::Data::String(path_os_str) = install_path_data {
+            let install_path_str = path_os_str.to_string_lossy().to_owned();
+            let path = PathBuf::from(install_path_str);
+            
+            if path.join("UmamusumePrettyDerby_Jpn.exe").is_file() {
+                Some(path)
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -193,50 +197,98 @@ impl Installer {
         const EXPECTED_ORIGINAL_HASH: &str = "2173ea1e399a00b680ecfffc5b297ed1c29065f256a2f8b91ebcb66bc6315eb0";
         const NOPATCH_HASH: &str = "d578a228248ed61792a966c89089b7690a5ec403a89f4630a2aa0fa75ac9efec";
 
-    if dmm_exe_path.is_file() {
-        let exe_data = std::fs::read(&dmm_exe_path)?;
-        let mut hasher = Sha256::new();
-        hasher.update(&exe_data);
-        let found_hash = hasher.finalize();
-        let found_hash_str = format!("{:x}", found_hash);
+        if dmm_exe_path.is_file() {
+            let exe_data = std::fs::read(&dmm_exe_path)?;
+            let mut hasher = Sha256::new();
+            hasher.update(&exe_data);
+            let found_hash = hasher.finalize();
+            let found_hash_str = format!("{:x}", found_hash);
 
-        if found_hash_str.to_lowercase() == NOPATCH_HASH.to_lowercase() {} else {
-            return Err(Error::VerificationError(format!(
-                "Found umamusume.exe, but its hash is incorrect. Expected {}, but found {}",
-                NOPATCH_HASH, found_hash_str
-            )));
-        }
-    } else if steam_exe_path.is_file() {
-        let original_exe_data = std::fs::read(&steam_exe_path)?;
-        let mut hasher = Sha256::new();
-        hasher.update(&original_exe_data);
-        let found_hash = hasher.finalize();
-        let found_hash_str = format!("{:x}", found_hash);
+            if found_hash_str.to_lowercase() == NOPATCH_HASH.to_lowercase() {} else {
+                return Err(Error::VerificationError(format!(
+                    "Found umamusume.exe, but its hash is incorrect. Expected {}, but found {}",
+                    NOPATCH_HASH, found_hash_str
+                )));
+            }
+        } else if steam_exe_path.is_file() {
+            let original_exe_data = std::fs::read(&steam_exe_path)?;
+            let mut hasher = Sha256::new();
+            hasher.update(&original_exe_data);
+            let found_hash = hasher.finalize();
+            let found_hash_str = format!("{:x}", found_hash);
 
-        if found_hash_str.to_lowercase() == EXPECTED_ORIGINAL_HASH.to_lowercase() {
-            let patch_data = include_bytes!("../umamusume.patch");
-            let temp_exe_path = steam_exe_path.with_extension("exe.tmp");
-            let mut temp_exe_file = File::create(&temp_exe_path)?;
+            if found_hash_str.to_lowercase() == EXPECTED_ORIGINAL_HASH.to_lowercase() {
+                let patch_data = include_bytes!("../umamusume.patch");
+                let temp_exe_path = steam_exe_path.with_extension("exe.tmp");
+                let mut temp_exe_file = File::create(&temp_exe_path)?;
 
-            let mut new_exe_data = Vec::new();
-            patch(&original_exe_data, &mut std::io::Cursor::new(patch_data), &mut new_exe_data)?;
+                let mut new_exe_data = Vec::new();
+                patch(&original_exe_data, &mut std::io::Cursor::new(patch_data), &mut new_exe_data)?;
 
-            temp_exe_file.write_all(&new_exe_data)?;
+                temp_exe_file.write_all(&new_exe_data)?;
 
-            std::fs::remove_file(&steam_exe_path)?;
-            std::fs::rename(&temp_exe_path, &steam_exe_path)?;
+                std::fs::remove_file(&steam_exe_path)?;
+                std::fs::rename(&temp_exe_path, &steam_exe_path)?;
+            } else {
+                return Err(Error::VerificationError(format!(
+                    "Found UmamusumePrettyDerby_Jpn.exe, but its hash is incorrect. Expected {}, but found {}",
+                    EXPECTED_ORIGINAL_HASH, found_hash_str
+                )));
+            }
         } else {
-            return Err(Error::VerificationError(format!(
-                "Found UmamusumePrettyDerby_Jpn.exe, but its hash is incorrect. Expected {}, but found {}",
-                EXPECTED_ORIGINAL_HASH, found_hash_str
+            return Err(Error::IoError(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Could not find UmamusumePrettyDerby_Jpn.exe or umamusume.exe."
             )));
         }
-    } else {
-        return Err(Error::IoError(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "Could not find UmamusumePrettyDerby_Jpn.exe or umamusume.exe."
-        )));
-    }
+
+        if let Some(install_dir) = &self.install_dir {
+            if let Some(steamapps_path) = find_steamapps_folder(install_dir) {
+                const STEAM_APP_ID: &str = "3564400";
+                let manifest_path = steamapps_path.join(format!("appmanifest_{}.acf", STEAM_APP_ID));
+                let backup_path = manifest_path.with_extension("acf.bak");
+
+                if manifest_path.is_file() {
+                    if let Ok(content) = std::fs::read_to_string(&manifest_path) {
+                        if !content.contains("\"AutoUpdateBehavior\"\t\t\"1\"") {
+                             let res = unsafe {
+                                MessageBoxW(
+                                    self.hwnd.as_ref(),
+                                    w!("To prevent accidental updates that could break the mod, would you like to change Steam's auto-update setting for this game to 'Update only when I launch it'?\n\nA backup of your original setting will be made."),
+                                    w!("Change Auto-Update Setting?"),
+                                    MB_ICONQUESTION | MB_YESNO
+                                )
+                            };
+                            
+                            if res == IDYES {
+                                if !backup_path.exists() {
+                                    std::fs::copy(&manifest_path, &backup_path)?;
+                                }
+
+                                let new_content = if content.contains("\"AutoUpdateBehavior\"\t\t\"0\"") {
+                                    content.replace("\"AutoUpdateBehavior\"\t\t\"0\"", "\"AutoUpdateBehavior\"\t\t\"1\"")
+                                } else if content.contains("\"AutoUpdateBehavior\"\t\t\"2\"") {
+                                    content.replace("\"AutoUpdateBehavior\"\t\t\"2\"", "\"AutoUpdateBehavior\"\t\t\"1\"")
+                                } else {
+                                    content
+                                };
+
+                                if std::fs::write(&manifest_path, new_content).is_ok() {
+                                    unsafe {
+                                        MessageBoxW(
+                                            self.hwnd.as_ref(),
+                                            w!("Steam's auto-update setting for this game has been changed."),
+                                            w!("Auto-update Setting Changed"),
+                                            MB_ICONINFORMATION | MB_OK
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         Ok(())
     }
@@ -368,6 +420,48 @@ impl Installer {
             }
         }
 
+        if let Some(install_dir) = &self.install_dir {
+            if let Some(steamapps_path) = find_steamapps_folder(install_dir) {
+                const STEAM_APP_ID: &str = "3564400";
+                let manifest_path = steamapps_path.join(format!("appmanifest_{}.acf", STEAM_APP_ID));
+                let backup_path = manifest_path.with_extension("acf.bak");
+
+                if backup_path.is_file() {
+                    let res = unsafe {
+                        MessageBoxW(
+                            self.hwnd.as_ref(),
+                            w!("Would you like to restore your original Steam auto-update setting for this game?"),
+                            w!("Restore Auto-Update Setting?"),
+                            MB_ICONQUESTION | MB_YESNO
+                        )
+                    };
+
+                    if res == IDYES {
+                        if let (Ok(live_content), Ok(backup_content)) = (std::fs::read_to_string(&manifest_path), std::fs::read_to_string(&backup_path)) {
+                            let original_setting = backup_content.lines().find(|l| l.contains("\"AutoUpdateBehavior\""));
+                            let current_setting = live_content.lines().find(|l| l.contains("\"AutoUpdateBehavior\""));
+
+                            if let (Some(original), Some(current)) = (original_setting, current_setting) {
+                                let new_content = live_content.replace(current, original);
+                                if std::fs::write(&manifest_path, new_content).is_ok() {
+                                    _ = std::fs::remove_file(&backup_path);
+
+                                    unsafe {
+                                        MessageBoxW(
+                                            self.hwnd.as_ref(),
+                                            w!("Your original auto-update setting has been restored."),
+                                            w!("Setting Restored"),
+                                            MB_ICONINFORMATION | MB_OK
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -380,10 +474,28 @@ impl Installer {
     }
 }
 
+fn find_steamapps_folder(game_install_dir: &Path) -> Option<PathBuf> {
+    let mut current = game_install_dir.to_path_buf();
+    while let Some(parent) = current.parent() {
+        let steamapps_path = parent.join("steamapps");
+        if steamapps_path.is_dir() {
+            return Some(steamapps_path);
+        }
+        current = parent.to_path_buf();
+        if current.parent().is_none() {
+            break;
+        }
+    }
+    None
+}
+
 impl Default for Installer {
     fn default() -> Installer {
+        let install_dir = Self::detect_dmm_install_dir()
+            .or_else(Self::detect_steam_install_dir);
+
         Installer {
-            install_dir: Self::detect_dmm_install_dir(),
+            install_dir,
             target: Target::default(),
             custom_target: None,
             system_dir: get_system_directory(),
