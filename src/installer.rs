@@ -76,25 +76,29 @@ impl Installer {
     }
 
     fn detect_steam_install_dir() -> Option<PathBuf> {
-        const STEAM_APP_ID: &str = "3564400";
-        let uninstall_key_path = format!(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Steam App {}", STEAM_APP_ID);
+        const GAME_FOLDER_NAME: &str = "UmamusumePrettyDerby_Jpn"; 
+        const GAME_EXE_NAME: &str = "UmamusumePrettyDerby_Jpn.exe";
 
-        let hklm = Hive::LocalMachine;
-        let uninstall_key = hklm.open(uninstall_key_path, registry::Security::Read).ok()?;
+        let mut potential_libraries = Vec::new();
 
-        let install_path_data = uninstall_key.value("InstallLocation").ok()?;
-        if let registry::Data::String(path_os_str) = install_path_data {
-            let install_path_str = path_os_str.to_string_lossy().to_owned();
-            let path = PathBuf::from(install_path_str);
-            
-            if path.join("UmamusumePrettyDerby_Jpn.exe").is_file() {
-                Some(path)
-            } else {
-                None
-            }
-        } else {
-            None
+        for letter in 'C'..='H' {
+            let drive = format!(r"{}:\", letter);
+
+            potential_libraries.push(PathBuf::from(&drive).join(r"Program Files (x86)\Steam"));
+
+            potential_libraries.push(PathBuf::from(&drive).join("SteamLibrary"));
+            potential_libraries.push(PathBuf::from(&drive).join("Steam"));
         }
+
+        for library_path in potential_libraries {
+            let game_path = library_path.join("steamapps\\common").join(GAME_FOLDER_NAME);
+
+            if game_path.join(GAME_EXE_NAME).is_file() {
+                return Some(game_path);
+            }
+        }
+
+        None
     }
 
     fn get_target_path_internal(&self, target: Target, p: impl AsRef<Path>) -> Option<PathBuf> {
