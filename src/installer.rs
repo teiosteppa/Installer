@@ -1,7 +1,9 @@
 use std::{fs::File, io::Write, path::{Path, PathBuf}};
 
+use bsdiff::patch;
 use pelite::resources::version_info::Language;
 use registry::Hive;
+use sha2::{Digest, Sha256};
 use tinyjson::JsonValue;
 use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
 
@@ -164,36 +166,57 @@ impl Installer {
         file.write(include_bytes!("../hachimi.dll"))?;
 
         let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
-        let exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
+
+        let steam_exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
+        let dmm_exe_path = install_path.join("umamusume.exe");
 
         const EXPECTED_ORIGINAL_HASH: &str = "2173ea1e399a00b680ecfffc5b297ed1c29065f256a2f8b91ebcb66bc6315eb0";
+        const NOPATCH_HASH: &str = "d578a228248ed61792a966c89089b7690a5ec403a89f4630a2aa0fa75ac9efec";
 
-        let mut original_exe_file = File::open(&exe_path)?;
-
+    if dmm_exe_path.is_file() {
+        let exe_data = std::fs::read(&dmm_exe_path)?;
         let mut hasher = Sha256::new();
-        std::io::copy(&mut original_exe_file, &mut hasher)?;
+        hasher.update(&exe_data);
         let found_hash = hasher.finalize();
         let found_hash_str = format!("{:x}", found_hash);
 
-        if found_hash_str.to_lowercase() != EXPECTED_ORIGINAL_HASH.to_lowercase() {
+        if found_hash_str.to_lowercase() == NOPATCH_HASH.to_lowercase() {} else {
             return Err(Error::VerificationError(format!(
-                "EXE hash mismatch. Expected {}, found {}",
-                EXPECTED_ORIGINAL_HASH,
-                found_hash_str
+                "Found umamusume.exe, but its hash is incorrect. Expected {}, but found {}",
+                NOPATCH_HASH, found_hash_str
             )));
         }
+    } else if steam_exe_path.is_file() {
+        let original_exe_data = std::fs::read(&steam_exe_path)?;
+        let mut hasher = Sha256::new();
+        hasher.update(&original_exe_data);
+        let found_hash = hasher.finalize();
+        let found_hash_str = format!("{:x}", found_hash);
 
-        original_exe_file.seek(SeekFrom::Start(0))?;
+        if found_hash_str.to_lowercase() == EXPECTED_ORIGINAL_HASH.to_lowercase() {
+            let patch_data = include_bytes!("../umamusume.patch");
+            let temp_exe_path = steam_exe_path.with_extension("exe.tmp");
+            let mut temp_exe_file = File::create(&temp_exe_path)?;
 
-        let patch_data = include_bytes!("../umamusume.patch");
+            let mut new_exe_data = Vec::new();
+            patch(&original_exe_data, &mut std::io::Cursor::new(patch_data), &mut new_exe_data)?;
 
-        let temp_exe_path = exe_path.with_extension("exe.tmp");
-        let mut temp_exe_file = File::create(&temp_exe_path)?;
+            temp_exe_file.write_all(&new_exe_data)?;
 
-        bspatch::apply(&original_exe_file, &mut std::io::Cursor::new(patch_data), &mut temp_exe_file)?;
-
-        std::fs::remove_file(&exe_path)?;
-        std::fs::rename(&temp_exe_path, &exe_path)?;
+            std::fs::remove_file(&steam_exe_path)?;
+            std::fs::rename(&temp_exe_path, &steam_exe_path)?;
+        } else {
+            return Err(Error::VerificationError(format!(
+                "Found UmamusumePrettyDerby_Jpn.exe, but its hash is incorrect. Expected {}, but found {}",
+                EXPECTED_ORIGINAL_HASH, found_hash_str
+            )));
+        }
+    } else {
+        return Err(Error::IoError(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Could not find UmamusumePrettyDerby_Jpn.exe or umamusume.exe."
+        )));
+    }
 
         Ok(())
     }
@@ -300,6 +323,31 @@ impl Installer {
             }
         }
 
+        let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
+        let exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
+
+        if exe_path.is_file() {
+            let reverse_patch_data = include_bytes!("../umamusume.rev.patch");
+            let patched_exe_data = std::fs::read(&exe_path)?;
+
+            const EXPECTED_PATCHED_HASH: &str = "9d6955463a0a509a2355d2227a4ee9ef0ca5da3f0f908b0c846a1e3c218cb703";
+            
+            let mut hasher = Sha256::new();
+            hasher.update(&patched_exe_data);
+            let found_hash = hasher.finalize();
+            let found_hash_str = format!("{:x}", found_hash);
+
+            if found_hash_str.to_lowercase() == EXPECTED_PATCHED_HASH.to_lowercase() {
+                let mut original_exe_data = Vec::new();
+
+                patch(&patched_exe_data, &mut std::io::Cursor::new(reverse_patch_data), &mut original_exe_data)?;
+
+                let temp_exe_path = exe_path.with_extension("exe.tmp");
+                std::fs::write(&temp_exe_path, &original_exe_data)?;
+                std::fs::rename(&temp_exe_path, &exe_path)?;
+            }
+        }
+
         Ok(())
     }
 
@@ -392,7 +440,6 @@ pub enum Error {
     IoError(std::io::Error),
     RegistryValueError(registry::value::Error),
     VerificationError(String),
-    PatchError(bspatch::PatchError),
 }
 
 impl std::fmt::Display for Error {
@@ -402,8 +449,7 @@ impl std::fmt::Display for Error {
             Error::CannotFindTarget => write!(f, "Cannot find target DLL in specified install location"),
             Error::IoError(e) => write!(f, "I/O error: {}", e),
             Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e),
-            Error::VerificationError(s) => write!(f, "File verification failed: {}", s),
-            Error::PatchError(e) => write!(f, "Failed to apply patch: {}", e),
+            Error::VerificationError(e) => write!(f, "Verification error: {}", e),
         }
     }
 }
@@ -417,11 +463,5 @@ impl From<std::io::Error> for Error {
 impl From<registry::value::Error> for Error {
     fn from(e: registry::value::Error) -> Self {
         Error::RegistryValueError(e)
-    }
-}
-
-impl From<bspatch::PatchError> for Error {
-    fn from(e: bspatch::PatchError) -> Self {
-        Error::PatchError(e)
     }
 }
