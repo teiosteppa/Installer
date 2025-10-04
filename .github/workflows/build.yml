@@ -65,6 +65,10 @@ jobs:
         run: cp Cellar/target/release/cellar.dll .
         shell: bash
 
+      - name: Copy hachimi.dll to root
+        run: cp target/release/hachimi.dll .
+        shell: bash
+
       - name: Build Installer
         run: cargo build --release
         shell: bash
