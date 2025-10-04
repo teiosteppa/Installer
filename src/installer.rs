@@ -76,25 +76,44 @@ impl Installer {
     }
 
     fn detect_steam_install_dir() -> Option<PathBuf> {
-        const GAME_FOLDER_NAME: &str = "UmamusumePrettyDerby_Jpn"; 
+        const STEAM_APP_ID: &str = "3564400";
+        const GAME_FOLDER_NAME: &str = "UmamusumePrettyDerby_Jpn";
         const GAME_EXE_NAME: &str = "UmamusumePrettyDerby_Jpn.exe";
 
-        let mut potential_libraries = Vec::new();
+        let Some(steam_path) = PathBuf::from(r"C:\Program Files (x86)\Steam")
+            .is_dir()
+            .then_some(PathBuf::from(r"C:\Program Files (x86)\Steam")) else {
+                return None;
+            };
 
-        for letter in 'C'..='H' {
-            let drive = format!(r"{}:\", letter);
+        let library_folders_path = steam_path.join("steamapps/libraryfolders.vdf");
 
-            potential_libraries.push(PathBuf::from(&drive).join(r"Program Files (x86)\Steam"));
+        let mut library_paths: Vec<PathBuf> = vec![steam_path.clone()];
 
-            potential_libraries.push(PathBuf::from(&drive).join("SteamLibrary"));
-            potential_libraries.push(PathBuf::from(&drive).join("Steam"));
+        if let Ok(vdf_content) = std::fs::read_to_string(&library_folders_path) {
+            for line in vdf_content.lines() {
+                let line = line.trim();
+                if line.starts_with(r#""path""#) {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() > 1 {
+                        let path_str = parts[1].trim_matches('"');
+                        library_paths.push(PathBuf::from(path_str.replace(r"\\", r"\")));
+                    }
+                }
+            }
         }
 
-        for library_path in potential_libraries {
-            let game_path = library_path.join("steamapps\\common").join(GAME_FOLDER_NAME);
+        let manifest_filename = format!("appmanifest_{}.acf", STEAM_APP_ID);
 
-            if game_path.join(GAME_EXE_NAME).is_file() {
-                return Some(game_path);
+        for library in library_paths {
+            let manifest_path = library.join("steamapps").join(&manifest_filename);
+
+            if manifest_path.is_file() {
+                let game_path = library.join("steamapps\\common").join(GAME_FOLDER_NAME);
+
+                if game_path.join(GAME_EXE_NAME).is_file() {
+                    return Some(game_path);
+                }
             }
         }
 
