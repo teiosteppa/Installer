@@ -354,8 +354,6 @@ impl Installer {
 
             if temp_path.is_file() {
                 std::fs::rename(&temp_path, &final_path)?;
-
-                _ = std::fs::remove_dir(install_dir.join("hachimi"));
             }
         }
 
