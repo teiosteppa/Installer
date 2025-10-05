@@ -59,7 +59,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build Hachimi-Edge DLL
-        run: cargo build --release --target-dir ../target
+        run: cargo build --release
         working-directory: ./Hachimi-Edge
 
       - name: Build Cellar DLL
@@ -67,7 +67,7 @@ jobs:
 
       - name: Copy dependency DLLs to root
         run: |
-          cp Hachimi-Edge/../target/release/hachimi.dll .
+          cp Hachimi-Edge/target/release/hachimi.dll .
           cp Cellar/target/release/cellar.dll .
         shell: bash
 
