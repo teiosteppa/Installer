@@ -5,7 +5,6 @@ use registry::Hive;
 // use tinyjson::JsonValue;
 // use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
 use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
-use keyvalues_parser::{Vdf, Value};
 use crate::utils::{self, get_system_directory};
 
 pub struct Installer {
@@ -85,14 +84,11 @@ impl Installer {
             _ => return None,
         };
  
-        // todo: iterate over 
-        let libraryfolders_path = steam_path.join("steamapps").join("libraryfolders.vdf");
-        let libraryfolders_vdf = std::fs::read_to_string(&libraryfolders_path).ok()?;
-        let libraryfolders = Vdf::parse(&libraryfolders_vdf).ok()?;
-        let default_library_str = libraryfolders.value.get_obj()?
-                                                .get("0")?.first()?
-                                                .get_obj()?.get("path")?.first()?.get_str()?;
-        let game_path = PathBuf::from(default_library_str).join("steamapps").join("common").join("UmamusumePrettyDerby_Jpn");
+        let steam_dir = steamlocate::SteamDir::locate()?;
+        let (uma_musume_steamapp, _lib) = steam_dir
+            .find_app(3564400)?
+            .expect("umamusume missing from steam");
+        let game_path = _lib.resolve_app_dir(uma_musume_steamapp);
         if game_path.is_dir() { return Some(game_path) };
         None
     }
