@@ -1,5 +1,5 @@
 # Hachimi Installer for Steam
-Simple installer for Hachimi.
+Simple installer for Hachimi, updated for use with the Steam version of Umamusume: Pretty Derby (JP). Built against the latest DLLs from [kairusds/Hachimi-Edge](https://github.com/kairusds/Hachimi-Edge).
 
 # Usage
 The installer supports both GUI and CLI/Unattended mode. To start in GUI mode, just launch the application without any arguments.
