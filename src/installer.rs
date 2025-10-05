@@ -1,3 +1,4 @@
+use steamlocate::SteamDir;
 use std::{fs::File, io::Write, path::{Path, PathBuf}};
 
 use bsdiff::patch;
@@ -101,38 +102,12 @@ impl Installer {
     }
 
     fn detect_steam_install_dir() -> Option<PathBuf> {
-        const STEAM_APP_ID: &str = "3564400";
-        const GAME_FOLDER_NAME: &str = "UmamusumePrettyDerby_Jpn";
+        const STEAM_APP_ID: u32 = 3564400;
         const GAME_EXE_NAME: &str = "UmamusumePrettyDerby_Jpn.exe";
 
-        let mut potential_libraries: Vec<PathBuf> = Vec::new();
-
-        let default_steam_path = PathBuf::from(r"C:\Program Files (x86)\Steam");
-        if default_steam_path.join("steam.exe").is_file() {
-            potential_libraries.push(default_steam_path);
-        }
-
-        for letter in 'A'..='Z' {
-            let drive_root = PathBuf::from(format!(r"{}:\", letter));
-
-            let steam_library_path = drive_root.join("SteamLibrary");
-            if steam_library_path.join("steam.dll").is_file() {
-                potential_libraries.push(steam_library_path);
-                continue;
-            }
-
-            if drive_root.join("steam.dll").is_file() {
-                potential_libraries.push(drive_root);
-            }
-        }
-
-        let manifest_filename = format!("appmanifest_{}.acf", STEAM_APP_ID);
-
-        for library in potential_libraries {
-            let manifest_path = library.join("steamapps").join(&manifest_filename);
-
-            if manifest_path.is_file() {
-                let game_path = library.join("steamapps\\common").join(GAME_FOLDER_NAME);
+        if let Ok(steamdir) = SteamDir::locate() {
+            if let Ok(Some(app)) = steamdir.find_app(STEAM_APP_ID) {
+                let game_path = PathBuf::from(&app.0.install_dir);
 
                 if game_path.join(GAME_EXE_NAME).is_file() {
                     return Some(game_path);

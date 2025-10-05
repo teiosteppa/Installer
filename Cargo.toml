@@ -15,6 +15,7 @@ bsdiff = "0.2.1"
 sha2 = "0.10.9"
 self_update = "0.42.0"
 chrono = { version = "0.4", features = ["serde"] }
+steamlocate = "=2.0.0-beta.0"
 
 [dependencies.windows]
 version = "0.58"
