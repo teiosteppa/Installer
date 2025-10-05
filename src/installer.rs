@@ -1,4 +1,4 @@
-use std::{fs::File, io::Write, path::{Path, PathBuf}, collections::HashMap, borrow::Cow,};
+use std::{fs::{File}, io::Write, path::{Path, PathBuf}, collections::HashMap, borrow::Cow,};
 
 use pelite::resources::version_info::Language;
 use registry::Hive;
@@ -180,11 +180,13 @@ impl Installer {
 
     pub fn pre_install(&self) -> Result<(), Error> {
         if TargetType::from(self.target) == TargetType::PluginShim {
-            let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
-            let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
+            //something exe idk
+            let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
+            let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
 
-            if !dest_dll.exists() && !src_dll.exists() {
-                return Err(Error::CannotFindTarget);
+            let backup_exe = std::fs::copy(&orig_exe, &backup_exe);
+            if (backup_exe.is_ok()) {
+                std::fs::remove_file(orig_exe)?;
             }
         }
 
@@ -271,24 +273,11 @@ impl Installer {
             //     }
             // },
             TargetType::PluginShim => {
-            
-                let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
-
-                //something exe idk
-                let exe_dest = install_path.join("UmamusumePrettyDerby_Jpn.exe");
-                std::fs::create_dir_all(exe_dest.parent().unwrap())?;
-                let mut exe_file = File::create(&exe_dest)?;
+                let patched_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
+                let mut exe_file = File::create(&patched_exe)?;
                 // i had to ask flippin gemini what i was supposed to do here
                 // thank you spoot
                 exe_file.write(include_bytes!("../UmamusumePrettyDerby_Jpn.exe"))?; 
-                let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
-                let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
-
-                if src_dll.exists() {
-                    std::fs::create_dir_all(dest_dll.parent().unwrap())?;
-                    std::fs::copy(&src_dll, &dest_dll)?;
-                    std::fs::remove_file(&src_dll)?;
-                }
             }
         }
 
@@ -310,11 +299,11 @@ impl Installer {
             //     _ = std::fs::remove_dir(parent);
             // },
             TargetType::PluginShim => {
-                let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
-                let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
-                if !src_dll.exists() {
-                    std::fs::copy(&dest_dll, &src_dll)?;
-                    std::fs::remove_file(&dest_dll)?;
+                let dest_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
+                let src_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
+                if dest_exe.exists() {
+                    std::fs::copy(&dest_exe, &src_exe)?;
+                    std::fs::remove_file(&dest_exe)?;
                 }
             }
         }
@@ -322,12 +311,12 @@ impl Installer {
         Ok(())
     }
 
-    pub fn get_dest_plugin_path(&self) -> Option<PathBuf> {
-        Some(self.install_dir.as_ref()?.join(format!("hachimi\\{}", self.target.dll_name())))
+    pub fn get_backup_exe_path(&self) -> Option<PathBuf> {
+        Some(self.install_dir.as_ref()?.join("UmamusumePrettyDerby_Jpn.old.exe"))
     }
 
-    pub fn get_src_plugin_path(&self) -> Option<PathBuf> {
-        Some(self.install_dir.as_ref()?.join(format!("umamusume_Data\\Plugins\\x86_64\\{}", self.target.dll_name())))
+    pub fn get_orig_exe_path(&self) -> Option<PathBuf> {
+        Some(self.install_dir.as_ref()?.join("UmamusumePrettyDerby_Jpn.exe"))
     }
 }
 
