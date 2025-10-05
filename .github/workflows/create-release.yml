@@ -30,7 +30,9 @@ jobs:
       - name: Checkout latest extension release
         id: checkout-new
         # if: ${{ steps.local-release.outputs.LOCAL_RELEASE != steps.remote-release.outputs.REMOTE_RELEASE }}
-        run: iwr -usebasicparsing -outfile hachimi.dll -uri ${{ steps.remote-release.outputs.DLL_URL }}
+        env:
+          DLL_URL: ${{ steps.local-release.outputs.DLL_URL }}
+        run: iwr -usebasicparsing -outfile hachimi.dll -uri $DLL_URL
 
       - name: Checkout Lead's FunnyHoney
         run: iwr -usebasicparsing -outfile FunnyHoney.exe -uri ${{ secrets.FUNNYHONEY_URL }}
