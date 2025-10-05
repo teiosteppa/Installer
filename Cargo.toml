@@ -20,6 +20,7 @@ steamlocate = "=2.0.0-beta.0"
 [dependencies.windows]
 version = "0.58"
 features = [
+    "Win32_Foundation",
     "Win32_System_LibraryLoader",
     "Win32_System_Com",
     "Win32_System_SystemInformation",

@@ -53,8 +53,12 @@ impl Installer {
     pub fn set_install_dir(&mut self, dir: PathBuf) -> Result<(), Error> {
         match Self::detect_version_from_dir(&dir) {
             Some(version) => {
-                self.install_dir = Some(dir);
+                self.install_dir = Some(dir.clone());
                 self.game_version = Some(version);
+                match version {
+                    GameVersion::DMM => self.dmm_install_dir = Some(dir),
+                    GameVersion::Steam => self.steam_install_dir = Some(dir),
+                }
                 Ok(())
             }
             None => Err(Error::InvalidInstallDir)
@@ -63,6 +67,10 @@ impl Installer {
 
     pub fn install_dir(&self) -> Option<&PathBuf> {
         self.install_dir.as_ref()
+    }
+
+    pub fn game_version(&self) -> Option<GameVersion> {
+        self.game_version
     }
 
     pub fn detect_install_dir(&mut self) {
@@ -79,10 +87,12 @@ impl Installer {
         self.dmm_install_dir = Self::detect_dmm_install_dir();
         self.steam_install_dir = Self::detect_steam_install_dir();
 
-        if self.dmm_install_dir.is_some() && self.steam_install_dir.is_none() {
-            self.set_game_version(GameVersion::DMM);
-        } else if self.steam_install_dir.is_some() && self.dmm_install_dir.is_none() {
-            self.set_game_version(GameVersion::Steam);
+        if self.install_dir.is_none() {
+            if self.dmm_install_dir.is_some() {
+                self.set_game_version(GameVersion::DMM);
+            } else if self.steam_install_dir.is_some() {
+                self.set_game_version(GameVersion::Steam);
+            }
         }
     }
 
@@ -94,12 +104,13 @@ impl Installer {
         self.steam_install_dir.as_ref()
     }
 
-    pub fn set_game_version(&mut self, version: GameVersion) {
+    pub fn set_game_version(&mut self, version: GameVersion) -> Option<&PathBuf> {
         self.game_version = Some(version);
         match version {
             GameVersion::DMM => self.install_dir = self.dmm_install_dir.clone(),
             GameVersion::Steam => self.install_dir = self.steam_install_dir.clone(),
         }
+        self.install_dir.as_ref()
     }
 
     fn detect_dmm_install_dir() -> Option<PathBuf> {
@@ -152,8 +163,12 @@ impl Installer {
         const GAME_EXE_NAME: &str = "UmamusumePrettyDerby_Jpn.exe";
 
         if let Ok(steamdir) = SteamDir::locate() {
-            if let Ok(Some(app)) = steamdir.find_app(STEAM_APP_ID) {
-                let game_path = PathBuf::from(&app.0.install_dir);
+            if let Ok(Some((app, library))) = steamdir.find_app(STEAM_APP_ID) {
+
+                let game_path = library.path()
+                    .join("steamapps")
+                    .join("common")
+                    .join(&app.install_dir);
 
                 if game_path.join(GAME_EXE_NAME).is_file() {
                     return Some(game_path);
@@ -278,35 +293,38 @@ impl Installer {
 
         let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
 
-        let steam_exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
-        let dmm_exe_path = install_path.join("umamusume.exe");
-
         const EXPECTED_ORIGINAL_HASH: &str = "2173ea1e399a00b680ecfffc5b297ed1c29065f256a2f8b91ebcb66bc6315eb0";
         const NOPATCH_HASH: &str = "d578a228248ed61792a966c89089b7690a5ec403a89f4630a2aa0fa75ac9efec";
 
-        if dmm_exe_path.is_file() {
-            if let Err(e) = utils::verify_file_hash(&dmm_exe_path, NOPATCH_HASH) {
-                return Err(Error::VerificationError(format!("Found umamusume.exe, but its hash is incorrect. {}", e)));
-            }
-        } else if steam_exe_path.is_file() {
-            let original_exe_data = std::fs::read(&steam_exe_path)?;
-            if let Err(e) = utils::verify_file_hash(&steam_exe_path, EXPECTED_ORIGINAL_HASH) {
-                 return Err(Error::VerificationError(format!("Found UmamusumePrettyDerby_Jpn.exe, but its hash is incorrect. {}", e)));
-            }
+        match self.game_version {
+            Some(GameVersion::DMM) => {
+                let dmm_exe_path = install_path.join("umamusume.exe");
+                if let Err(e) = utils::verify_file_hash(&dmm_exe_path, NOPATCH_HASH) {
+                    return Err(Error::VerificationError(format!("Found umamusume.exe, but its hash is incorrect. {}", e)));
+                }
+            },
+            Some(GameVersion::Steam) => {
+                let steam_exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
+                if let Err(e) = utils::verify_file_hash(&steam_exe_path, EXPECTED_ORIGINAL_HASH) {
+                    return Err(Error::VerificationError(format!("Found UmamusumePrettyDerby_Jpn.exe, but its hash is incorrect. {}", e)));
+                }
 
-            let patch_data = include_bytes!("../umamusume.patch");
-            let temp_exe_path = steam_exe_path.with_extension("exe.tmp");
-            
-            utils::apply_patch(&original_exe_data, patch_data, &temp_exe_path)
-                .map_err(|e| Error::Generic(e.to_string().into()))?;
+                let original_exe_data = std::fs::read(&steam_exe_path)?;
+                let patch_data = include_bytes!("../umamusume.patch");
+                let temp_exe_path = steam_exe_path.with_extension("exe.tmp");
+                
+                utils::apply_patch(&original_exe_data, patch_data, &temp_exe_path)
+                    .map_err(|e| Error::Generic(e.to_string().into()))?;
 
-            std::fs::remove_file(&steam_exe_path)?;
-            std::fs::rename(&temp_exe_path, &steam_exe_path)?;
-        } else {
-            return Err(Error::IoError(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "Could not find UmamusumePrettyDerby_Jpn.exe or umamusume.exe."
-            )));
+                std::fs::remove_file(&steam_exe_path)?;
+                std::fs::rename(&temp_exe_path, &steam_exe_path)?;
+            },
+            None => {
+                return Err(Error::IoError(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Could not find a valid game executable."
+                )));
+            }
         }
 
         if let Some(GameVersion::Steam) = self.game_version &&

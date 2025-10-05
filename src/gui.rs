@@ -1,10 +1,10 @@
 use crate::{installer::{self, GameVersion, Installer}, resource::*, updater::UpdateStatus, utils};
 use windows::{core::{w, HSTRING}, Win32::{
     Foundation::{HWND, LPARAM, WPARAM},
-    System::LibraryLoader::GetModuleHandleW,
+    System::{Com::{CoInitializeEx, COINIT_APARTMENTTHREADED}, LibraryLoader::GetModuleHandleW},
     UI::{Controls::{BST_CHECKED, BST_UNCHECKED}, Input::KeyboardAndMouse::EnableWindow, WindowsAndMessaging::{
         BM_SETCHECK, CreateDialogParamW, DestroyIcon, DispatchMessageW, GetDlgItem, GetMessageW,
-        GetWindowLongPtrW, LoadIconW, MessageBoxW, PostQuitMessage, SendMessageW,
+        GetWindowLongPtrW, IsDialogMessageW, LoadIconW, MessageBoxW, PostQuitMessage, SendMessageW,
         SetWindowLongPtrW,SetWindowTextW, ShowWindow, TranslateMessage,
         CBN_SELCHANGE, CB_ADDSTRING, CB_DELETESTRING, CB_GETCURSEL, CB_INSERTSTRING, CB_SETCURSEL,
         GWLP_USERDATA, ICON_BIG, IDOK, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONWARNING,
@@ -13,6 +13,10 @@ use windows::{core::{w, HSTRING}, Win32::{
 }};
 
 pub fn run(update_status: UpdateStatus) -> Result<(), windows::core::Error> {
+    unsafe {
+        CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
+    }
+
     match update_status {
         UpdateStatus::Updated(date) => {
             let message = format!(
@@ -44,10 +48,10 @@ pub fn run(update_status: UpdateStatus) -> Result<(), windows::core::Error> {
     installer.hwnd = Some(dialog);
 
     let mut message = MSG::default();
-    unsafe {
-        while GetMessageW(&mut message, None, 0, 0).into() {
-            _ = TranslateMessage(&message);
-            DispatchMessageW(&message);
+    while unsafe { GetMessageW(&mut message, None, 0, 0) }.as_bool() {
+        if !unsafe { IsDialogMessageW(dialog, &message) }.as_bool() {
+            let _ = unsafe { TranslateMessage(&message) };
+            unsafe { DispatchMessageW(&message) };
         }
     }
 
@@ -92,7 +96,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
         WM_INITDIALOG => {
             // Set the installer ptr
             unsafe { SetWindowLongPtrW(dialog, GWLP_USERDATA, lparam.0) };
-            let _installer = unsafe { (lparam.0 as *mut Installer).as_ref().unwrap() };
+            let installer = unsafe { (lparam.0 as *mut Installer).as_mut().unwrap() };
 
             // Set icon
             let instance = unsafe { GetModuleHandleW(None).unwrap() };
@@ -101,7 +105,6 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                 let _ = unsafe { DestroyIcon(icon) };
             }
 
-            let installer = get_installer(dialog);
             let dmm_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_DMM).unwrap() };
             let steam_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_STEAM).unwrap() };
             let version_group = unsafe { GetDlgItem(dialog, IDC_VERSION_GROUP).unwrap() };
@@ -114,21 +117,29 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                 let _ = unsafe { ShowWindow(dmm_radio, SW_SHOW) };
                 let _ = unsafe { ShowWindow(steam_radio, SW_SHOW) };
 
-                let _ = unsafe { EnableWindow(GetDlgItem(dialog, IDC_INSTALL).unwrap(), false) };
-                let _ = unsafe { EnableWindow(GetDlgItem(dialog, IDC_UNINSTALL).unwrap(), false) };
-                let _ = unsafe { EnableWindow(GetDlgItem(dialog, IDC_INSTALL_PATH_BROWSE).unwrap(), false) };
+                let initial_version = installer.game_version().unwrap_or(GameVersion::DMM);
+                installer.set_game_version(initial_version);
 
+                if let Some(path) = installer.install_dir() {
+                    let install_path_edit = unsafe { GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap() };
+                    _ = unsafe { SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap())) };
+                }
+
+                let (dmm_check, steam_check) = if initial_version == GameVersion::DMM {
+                    (BST_CHECKED, BST_UNCHECKED)
+                } else {
+                    (BST_UNCHECKED, BST_CHECKED)
+                };
+
+                unsafe {
+                    SendMessageW(dmm_radio, BM_SETCHECK, WPARAM(dmm_check.0 as _), None);
+                    SendMessageW(steam_radio, BM_SETCHECK, WPARAM(steam_check.0 as _), None);
+                }
             } else {
                 if let Some(path) = installer.install_dir() {
                     let install_path_edit = unsafe { GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap() };
                     _ = unsafe { SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap())) };
                 }
-            }
-
-            // Set install path
-            if let Some(path) = installer.install_dir() {
-                let install_path_edit = unsafe { GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap() };
-                _ = unsafe { SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap())) };
             }
 
             // Set packaged version
@@ -210,18 +221,17 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                     } else {
                         GameVersion::Steam
                     };
-                    installer.set_game_version(version);
+
+                    if let Some(path) = installer.set_game_version(version) {
+                        let install_path_edit = unsafe { GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap() };
+                        _ = unsafe { SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap())) };
+                    }
 
                     let dmm_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_DMM).unwrap() };
                     let steam_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_STEAM).unwrap() };
                     unsafe { SendMessageW(dmm_radio, BM_SETCHECK, WPARAM(BST_UNCHECKED.0 as _), None) };
                     unsafe { SendMessageW(steam_radio, BM_SETCHECK, WPARAM(BST_UNCHECKED.0 as _), None) };
                     unsafe { SendMessageW(control, BM_SETCHECK, WPARAM(BST_CHECKED.0 as _), None) };
-
-                    if let Some(path) = installer.install_dir() {
-                        let install_path_edit = unsafe { GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap() };
-                        _ = unsafe { SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap())) };
-                    }
 
                     let _ = unsafe { EnableWindow(GetDlgItem(dialog, IDC_INSTALL).unwrap(), true) };
                     let _ = unsafe { EnableWindow(GetDlgItem(dialog, IDC_UNINSTALL).unwrap(), true) };
@@ -239,15 +249,32 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                         return 1;
                     };
 
-                        match installer.set_install_dir(path.clone()) {
-                            Ok(_) => {
-                                let install_path_edit = unsafe { GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap() };
-                                _ = unsafe { SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap())) };
-                            }
-                            Err(e) => {
-                                unsafe { MessageBoxW(dialog, &HSTRING::from(e.to_string()), w!("Error"), MB_ICONERROR | MB_OK) };
+                    match installer.set_install_dir(path.clone()) {
+                        Ok(_) => {
+                            let install_path_edit = unsafe { GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap() };
+                            _ = unsafe { SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap())) };
+                            
+                            // Update radio buttons to reflect the detected game version
+                            if let Some(version) = installer.game_version() {
+                                let dmm_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_DMM).unwrap() };
+                                let steam_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_STEAM).unwrap() };
+                                
+                                let (dmm_check, steam_check) = if version == GameVersion::DMM {
+                                    (BST_CHECKED, BST_UNCHECKED)
+                                } else {
+                                    (BST_UNCHECKED, BST_CHECKED)
+                                };
+                                
+                                unsafe {
+                                    SendMessageW(dmm_radio, BM_SETCHECK, WPARAM(dmm_check.0 as _), None);
+                                    SendMessageW(steam_radio, BM_SETCHECK, WPARAM(steam_check.0 as _), None);
+                                }
                             }
                         }
+                        Err(e) => {
+                            unsafe { MessageBoxW(dialog, &HSTRING::from(e.to_string()), w!("Error"), MB_ICONERROR | MB_OK) };
+                        }
+                    }
 
                     update_target(dialog, unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() }, installer.target as _);
                 }
