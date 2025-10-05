@@ -1,17 +1,16 @@
-use std::{ffi::{CStr, OsString}, os::windows::ffi::OsStringExt, path::{Path, PathBuf}};
+use std::{ffi::CStr, path::{Path, PathBuf}};
 
 use pelite::resources::version_info::VersionInfo;
 use windows::{
     core::HSTRING,
     Win32::{
-        Foundation::{HWND, MAX_PATH, RECT},
+        Foundation::{HWND, RECT},
         System::{
             Com::{CoCreateInstance, CLSCTX_INPROC_SERVER},
             Diagnostics::ToolHelp::{
                 CreateToolhelp32Snapshot, Process32First, Process32Next, PROCESSENTRY32,
                 TH32CS_SNAPALL,
             },
-            SystemInformation::GetSystemDirectoryW,
         },
         UI::{
             Shell::{
