@@ -1,4 +1,6 @@
 use std::{fs::File, io::Write, path::{Path, PathBuf}};
+use winreg::enums::*;
+use winreg::RegKey;
 
 use bsdiff::patch;
 use pelite::resources::version_info::Language;
@@ -76,25 +78,25 @@ impl Installer {
     }
 
     fn detect_steam_install_dir() -> Option<PathBuf> {
-        const GAME_FOLDER_NAME: &str = "UmamusumePrettyDerby_Jpn"; 
-        const GAME_EXE_NAME: &str = "UmamusumePrettyDerby_Jpn.exe";
+        const STEAM_APP_ID: &str = "3564400";
+        let uninstall_base_paths = [
+            (RegKey::predef(HKEY_LOCAL_MACHINE), r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+            (RegKey::predef(HKEY_LOCAL_MACHINE), r"SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+            (RegKey::predef(HKEY_CURRENT_USER), r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        ];
 
-        let mut potential_libraries = Vec::new();
+        let game_subkey_name = format!("Steam App {}", STEAM_APP_ID);
 
-        for letter in 'C'..='H' {
-            let drive = format!(r"{}:\", letter);
-
-            potential_libraries.push(PathBuf::from(&drive).join(r"Program Files (x86)\Steam"));
-
-            potential_libraries.push(PathBuf::from(&drive).join("SteamLibrary"));
-            potential_libraries.push(PathBuf::from(&drive).join("Steam"));
-        }
-
-        for library_path in potential_libraries {
-            let game_path = library_path.join("steamapps\\common").join(GAME_FOLDER_NAME);
-
-            if game_path.join(GAME_EXE_NAME).is_file() {
-                return Some(game_path);
+        for (hive, base_path) in &uninstall_base_paths {
+            if let Ok(uninstall_key) = hive.open_subkey_with_flags(base_path, KEY_READ) {
+                if let Ok(game_key) = uninstall_key.open_subkey(&game_subkey_name) {
+                    if let Ok(install_path_str) = game_key.get_value::<String, _>("InstallLocation") {
+                        let install_path = PathBuf::from(install_path_str);
+                        if install_path.is_dir() {
+                            return Some(install_path);
+                        }
+                    }
+                }
             }
         }
 
