@@ -6,35 +6,45 @@ on:
 
   workflow_dispatch:
 
-env:
-  CARGO_TERM_COLOR: always
-  RUSTC_WRAPPER: sccache
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-    name: Build Installer on Windows
+    name: Build and Release on Windows
     runs-on: windows-latest
+
+    permissions:
+      contents: write
+
+    env:
+      CARGO_TERM_COLOR: always
+      RUSTC_WRAPPER: sccache
+      ARTIFACT_NAME: hachimi_installer.exe
 
     steps:
       - name: Checkout Installer repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Checkout Hachimi-Edge repository
+      - name: Checkout Hachimi-Edge repository (dependency)
         uses: actions/checkout@v4
         with:
           repository: kairusds/Hachimi-Edge
           path: Hachimi-Edge
 
-      - name: Checkout Cellar repository
+      - name: Checkout Cellar repository (dependency)
         uses: actions/checkout@v4
         with:
           repository: Hachimi-Hachimi/Cellar
           path: Cellar
 
-      - name: Setup sccache
+      - name: Setup sccache for build caching
         uses: mozilla-actions/sccache-action@v0.0.5
 
-      - name: Cache cargo dependencies
+      - name: Cache Cargo dependencies
         uses: actions/cache@v4
         with:
           path: |
@@ -43,61 +53,51 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-            Cellar/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('Hachimi-Edge/Cargo.lock') }}-${{ hashFiles('Cellar/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: stable
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Build Hachimi-Edge
-        run: RUSTFLAGS="-A dead_code -A non_snake_case -A unnecessary_transmutes" cargo build --release --target-dir ../target
+      - name: Build Hachimi-Edge DLL
+        run: cargo build --release --target-dir ../target
         working-directory: ./Hachimi-Edge
-        shell: bash
 
-      - name: Build Cellar
+      - name: Build Cellar DLL
         run: cargo build --release
-        working-directory: ./Cellar
+
+      - name: Copy dependency DLLs to root
+        run: |
+          cp Hachimi-Edge/../target/release/hachimi.dll .
+          cp Cellar/target/release/cellar.dll .
         shell: bash
 
-      - name: Copy cellar.dll to root
-        run: cp Cellar/target/release/cellar.dll .
-        shell: bash
-
-      - name: Copy hachimi.dll to root
-        run: cp target/release/hachimi.dll .
-        shell: bash
-
-      - name: Build Installer
+      - name: Build Installer executable
         run: cargo build --release --features compress_dll
-        shell: bash
 
       - name: Show sccache stats
         run: sccache --show-stats
-        shell: bash
 
-      - name: Upload Artifacts
+      - name: Upload Artifact for inspection
         uses: actions/upload-artifact@v4
         with:
           name: installer-windows
-          path: target/release/hachimi_installer.exe
+          path: target/release/${{ env.ARTIFACT_NAME }}
 
-      - name: Update Nightly Tag
+      - name: Update and push the 'nightly' tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git tag -fa nightly -m "Nightly Build"
+          git tag -fa nightly -m "Nightly Build from commit ${{ github.sha }}"
 
           git push origin nightly --force
         shell: bash
 
-      - name: Upload to Nightly Release
+      - name: Upload Asset to Nightly Release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: target/release/hachimi_installer.exe
+          file: target/release/${{ env.ARTIFACT_NAME }}
           tag: nightly
           overwrite: true
-          body: "Latest nightly build from commit ${{ github.sha }}"
+          body: "Latest nightly build from commit `${{ github.sha }}`"

@@ -1,4 +1,4 @@
-use crate::{installer::{self, Installer}, resource::*, utils};
+use crate::{installer::{self, Installer}, resource::*, updater::UpdateStatus, utils};
 use windows::{core::{w, HSTRING}, Win32::{
     Foundation::{HWND, LPARAM, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
@@ -12,7 +12,27 @@ use windows::{core::{w, HSTRING}, Win32::{
     }}
 }};
 
-pub fn run() -> Result<(), windows::core::Error> {
+pub fn run(update_status: UpdateStatus) -> Result<(), windows::core::Error> {
+    match update_status {
+        UpdateStatus::Updated(date) => {
+            let message = format!(
+                "Successfully updated to the latest nightly build (from {}).\n\nPlease restart the application to use the new version.",
+                date
+            );
+            unsafe {
+                MessageBoxW(None, &HSTRING::from(message), w!("Update Successful"), MB_ICONINFORMATION | MB_OK);
+            }
+            std::process::exit(0);
+        }
+        UpdateStatus::NotNeeded | UpdateStatus::Disabled => {}
+        UpdateStatus::Failed(msg) => {
+            let message = format!("Failed to check for updates:\n\n{}", msg);
+            unsafe {
+                MessageBoxW(None, &HSTRING::from(message), w!("Update Error"), MB_ICONERROR | MB_OK);
+            }
+        }
+    }
+
     let mut installer = Box::new(Installer::default());
 
     let instance = unsafe { GetModuleHandleW(None)? };

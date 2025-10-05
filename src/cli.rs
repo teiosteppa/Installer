@@ -8,7 +8,7 @@ use windows::{
     }
 };
 
-use crate::{installer::{self, Installer, Target}, utils};
+use crate::{installer::{self, Installer, Target}, updater::UpdateStatus, utils};
 
 #[derive(Default)]
 struct Args {
@@ -85,7 +85,19 @@ impl Args {
     }
 }
 
-pub fn run() -> Result<bool, installer::Error> {
+pub fn run(update_status: &UpdateStatus) -> Result<bool, installer::Error> {
+    match update_status {
+        UpdateStatus::Updated(version) => println!(
+            "[UPDATE] Successfully updated to the nightly build from {}! Please restart.",
+            version
+        ),
+        UpdateStatus::NotNeeded => {
+            println!("[UPDATE] You are already on the latest nightly build.")
+        }
+        UpdateStatus::Failed(msg) => eprintln!("[UPDATE ERROR] {}", msg),
+        UpdateStatus::Disabled => {}
+    }
+
     let mut args = Args::parse();
     
     if let Some(command) = args.command {
