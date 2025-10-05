@@ -1,4 +1,5 @@
-use std::{ffi::{CStr, OsString}, os::windows::ffi::OsStringExt, path::{Path, PathBuf}};
+use sha2::{Digest, Sha256};
+use std::{ffi::{CStr, OsString}, os::windows::ffi::OsStringExt, path::{Path, PathBuf}, fs::File, io::{Read, Write}};
 
 use pelite::resources::version_info::VersionInfo;
 use windows::{
@@ -112,4 +113,50 @@ pub fn get_system_directory() -> PathBuf {
     let mut buffer = [0u16; MAX_PATH as usize];
     let length = unsafe { GetSystemDirectoryW(Some(&mut buffer)) };
     PathBuf::from(OsString::from_wide(&buffer[0..length as usize]))
+}
+
+pub fn verify_file_hash(path: &Path, expected_hash: &str) -> Result<(), String> {
+    let mut file = match File::open(path) {
+        Ok(f) => f,
+        Err(e) => return Err(format!("Could not open file: {}", e)),
+    };
+
+    let mut hasher = Sha256::new();
+    let mut buffer = [0; 1024];
+
+    loop {
+        let n = match file.read(&mut buffer) {
+            Ok(n) => n,
+            Err(e) => return Err(format!("Could not read file: {}", e)),
+        };
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+
+    let found_hash = format!("{:x}", hasher.finalize());
+
+    if found_hash.to_lowercase() == expected_hash.to_lowercase() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Hash mismatch. Expected {}, but found {}",
+            expected_hash, found_hash
+        ))
+    }
+}
+
+pub fn apply_patch(
+    original_data: &[u8],
+    patch_data: &[u8],
+    output_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut new_exe_data = Vec::new();
+    bsdiff::patch(original_data, &mut std::io::Cursor::new(patch_data), &mut new_exe_data)?;
+
+    let mut temp_exe_file = File::create(output_path)?;
+    temp_exe_file.write_all(&new_exe_data)?;
+
+    Ok(())
 }

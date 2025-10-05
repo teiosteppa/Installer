@@ -1,7 +1,7 @@
 [package]
 name = "hachimi_installer"
 version = "3.1.0"
-edition = "2021"
+edition = "2024"
 
 [profile.release]
 lto = true
@@ -26,7 +26,8 @@ features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Shell",
     "Win32_UI_Input_KeyboardAndMouse",
-    "Win32_System_Diagnostics_ToolHelp"
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_UI_Controls"
 ]
 
 [build-dependencies]
