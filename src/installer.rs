@@ -1,17 +1,17 @@
-use std::{fs::{File}, io::Write, path::{Path, PathBuf}, collections::HashMap, borrow::Cow,};
+use std::{fs::File, io::Write, path::{Path, PathBuf}, };
 
 use pelite::resources::version_info::Language;
-use registry::Hive;
+// use registry::Hive;
 // use tinyjson::JsonValue;
 // use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
-use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
-use crate::utils::{self, get_system_directory};
+use windows::{Win32::{Foundation::HWND}};
+use steamlocate::SteamDir;
+use crate::utils::{self};
 
 pub struct Installer {
     pub install_dir: Option<PathBuf>,
     pub target: Target,
     pub custom_target: Option<String>,
-    system_dir: PathBuf,
     pub hwnd: Option<HWND>
 }
 
@@ -21,7 +21,6 @@ impl Installer {
             install_dir: install_dir.or_else(Self::detect_install_dir),
             target,
             custom_target,
-            system_dir: get_system_directory(),
             hwnd: None
         }
     }
@@ -75,7 +74,7 @@ impl Installer {
     // }
 
     fn detect_steam_install_dir() -> Option<PathBuf> {
-        let steam_dir = steamlocate::SteamDir::locate().ok()?;
+        let steam_dir = SteamDir::locate().ok()?;
         let (uma_musume_steamapp, _lib) = steam_dir
             .find_app(3564400)
             .ok()??;
@@ -171,8 +170,13 @@ impl Installer {
             let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
             let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
 
-            let backup_exe = std::fs::copy(&orig_exe, &backup_exe);
-            if (backup_exe.is_ok()) {
+            // shim exe from game never changes, so we can hardcode this
+            if !backup_exe.exists() {
+                let _backup_exe = std::fs::copy(&orig_exe, &backup_exe);
+                assert!(_backup_exe.is_ok());
+            }
+            // edge case race condition (i think?), separate checks, only delete original if backup exists
+            if backup_exe.exists() {
                 std::fs::remove_file(orig_exe)?;
             }
         }
@@ -286,11 +290,11 @@ impl Installer {
             //     _ = std::fs::remove_dir(parent);
             // },
             TargetType::PluginShim => {
-                let dest_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
-                let src_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
-                if dest_exe.exists() {
-                    std::fs::copy(&dest_exe, &src_exe)?;
-                    std::fs::remove_file(&dest_exe)?;
+                let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
+                let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
+                if backup_exe.exists() {
+                    std::fs::copy(&backup_exe, &orig_exe)?;
+                    std::fs::remove_file(&backup_exe)?;
                 }
             }
         }
@@ -313,7 +317,6 @@ impl Default for Installer {
             install_dir: Self::detect_install_dir(),
             target: Target::default(),
             custom_target: None,
-            system_dir: get_system_directory(),
             hwnd: None
         }
     }
@@ -384,18 +387,18 @@ impl TargetVersionInfo {
 #[derive(Debug)]
 pub enum Error {
     NoInstallDir,
-    CannotFindTarget,
     IoError(std::io::Error),
-    RegistryValueError(registry::value::Error)
+    RegistryValueError(registry::value::Error),
+    // BackupNotFound
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::NoInstallDir => write!(f, "No install location specified"),
-            Error::CannotFindTarget => write!(f, "Cannot find target DLL in specified install location"),
             Error::IoError(e) => write!(f, "I/O error: {}", e),
-            Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e)
+            Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e),
+            // Error::BackupNotFound => write!(f, "Failed to restore backup. Validate game integrity in Steam before launching.")
         }
     }
 }
