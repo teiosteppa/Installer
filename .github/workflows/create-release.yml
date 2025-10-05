@@ -22,7 +22,6 @@ jobs:
 
       - name: Fetch local release version
         id: local-release
-        working-directory: ./extensions/wal2json
         run: echo "::set-output name=LOCAL_RELEASE::$(git describe --tags --abbrev=0)"
 
       - name: Checkout latest extension release
