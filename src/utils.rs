@@ -107,9 +107,3 @@ pub fn is_game_running() -> bool {
 
     false
 }
-
-pub fn get_system_directory() -> PathBuf {
-    let mut buffer = [0u16; MAX_PATH as usize];
-    let length = unsafe { GetSystemDirectoryW(Some(&mut buffer)) };
-    PathBuf::from(OsString::from_wide(&buffer[0..length as usize]))
-}
