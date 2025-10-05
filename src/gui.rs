@@ -319,7 +319,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                         .and_then(|_| installer.post_install())
                     {
                         Ok(_) => {
-                            unsafe { MessageBoxW(dialog, w!("Install completed."), w!("Success"), MB_ICONINFORMATION | MB_OK) };
+                            unsafe { MessageBoxW(dialog, w!("Install completed. Be sure to reinstall if the game updates."), w!("Success"), MB_ICONINFORMATION | MB_OK) };
                         },
                         Err(e) => {
                             unsafe { MessageBoxW(dialog, &HSTRING::from(e.to_string()), w!("Error"), MB_ICONERROR | MB_OK) };
