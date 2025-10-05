@@ -268,6 +268,10 @@ impl Installer {
                 let mut exe_file = File::create(&patched_exe)?;
                 // i had to ask flippin gemini what i was supposed to do here
                 // thank you spoot
+                #[cfg(feature = "compress_dll")]
+                exe_file.write(&include_bytes_zstd!("FunnyHoney.exe", 19))?;
+
+                #[cfg(not(feature = "compress_dll"))]
                 exe_file.write(include_bytes!("../FunnyHoney.exe"))?; 
             }
         }
