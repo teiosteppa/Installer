@@ -294,19 +294,19 @@ impl Installer {
         let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
 
         const EXPECTED_ORIGINAL_HASH: &str = "2173ea1e399a00b680ecfffc5b297ed1c29065f256a2f8b91ebcb66bc6315eb0";
-        const NOPATCH_HASH: &str = "d578a228248ed61792a966c89089b7690a5ec403a89f4630a2aa0fa75ac9efec";
 
         match self.game_version {
-            Some(GameVersion::DMM) => {
-                let dmm_exe_path = install_path.join("umamusume.exe");
-                if let Err(e) = utils::verify_file_hash(&dmm_exe_path, NOPATCH_HASH) {
-                    return Err(Error::VerificationError(format!("Found umamusume.exe, but its hash is incorrect. {}", e)));
-                }
-            },
+            Some(GameVersion::DMM) => {},
             Some(GameVersion::Steam) => {
                 let steam_exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
+                let backup_exe_path = steam_exe_path.with_extension("exe.bak");
+
                 if let Err(e) = utils::verify_file_hash(&steam_exe_path, EXPECTED_ORIGINAL_HASH) {
                     return Err(Error::VerificationError(format!("Found UmamusumePrettyDerby_Jpn.exe, but its hash is incorrect. {}", e)));
+                }
+
+                if !backup_exe_path.exists() {
+                    std::fs::copy(&steam_exe_path, &backup_exe_path)?;
                 }
 
                 let original_exe_data = std::fs::read(&steam_exe_path)?;
@@ -478,19 +478,11 @@ impl Installer {
 
         let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
         let exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
+        let backup_path = exe_path.with_extension("exe.bak");
 
-        if exe_path.is_file() {
-            const EXPECTED_PATCHED_HASH: &str = "9d6955463a0a509a2355d2227a4ee9ef0ca5da3f0f908b0c846a1e3c218cb703";
-            if utils::verify_file_hash(&exe_path, EXPECTED_PATCHED_HASH).is_ok() {
-                let patched_exe_data = std::fs::read(&exe_path)?;
-                let reverse_patch_data = include_bytes!("../umamusume.rev.patch");
-                let temp_exe_path = exe_path.with_extension("exe.tmp");
-
-                utils::apply_patch(&patched_exe_data, reverse_patch_data, &temp_exe_path)
-                    .map_err(|e| Error::Generic(e.to_string().into()))?;
-
-                std::fs::rename(&temp_exe_path, &exe_path)?;
-            }
+        if backup_path.is_file() {
+            std::fs::remove_file(&exe_path)?;
+            std::fs::rename(&backup_path, &exe_path)?;
         }
 
         if let Some(install_dir) = &self.install_dir {
