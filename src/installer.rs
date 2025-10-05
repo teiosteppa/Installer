@@ -9,8 +9,15 @@ use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERI
 
 use crate::utils::{self, get_system_directory};
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum GameVersion {
+    DMM,
+    Steam
+}
+
 pub struct Installer {
     pub install_dir: Option<PathBuf>,
+    pub game_version: Option<GameVersion>,
     pub target: Target,
     pub custom_target: Option<String>,
     system_dir: PathBuf,
@@ -19,10 +26,28 @@ pub struct Installer {
 
 impl Installer {
     pub fn custom(install_dir: Option<PathBuf>, target: Target, custom_target: Option<String>) -> Installer {
+        let (resolved_install_dir, game_version) =
+            if let Some(dir) = install_dir {
+                if dir.join("umamusume.exe").is_file() {
+                    (Some(dir), Some(GameVersion::DMM))
+                } else if dir.join("UmamusumePrettyDerby_Jpn.exe").is_file() {
+                    (Some(dir), Some(GameVersion::Steam))
+                } else {
+                    (Some(dir), None)
+                }
+            } else {
+                if let Some(dmm_dir) = Self::detect_dmm_install_dir() {
+                    (Some(dmm_dir), Some(GameVersion::DMM))
+                } else if let Some(steam_dir) = Self::detect_steam_install_dir() {
+                    (Some(steam_dir), Some(GameVersion::Steam))
+                } else {
+                    (None, None)
+                }
+            };
+
         Installer {
-            install_dir: install_dir
-                .or_else(Self::detect_dmm_install_dir)
-                .or_else(Self::detect_steam_install_dir),
+            install_dir: resolved_install_dir,
+            game_version,
             target,
             custom_target,
             system_dir: get_system_directory(),
@@ -118,10 +143,25 @@ impl Installer {
         None
     }
 
+    fn get_install_method(&self, target: Target) -> InstallMethod {
+        match target {
+            Target::UnityPlayer => InstallMethod::DotLocal,
+            Target::CriManaVpx => {
+                if self.game_version == Some(GameVersion::Steam) {
+                    InstallMethod::Direct
+                } else {
+                    InstallMethod::PluginShim
+                }
+            }
+        }
+    }
+
     fn get_target_path_internal(&self, target: Target, p: impl AsRef<Path>) -> Option<PathBuf> {
-        Some(match TargetType::from(target) {
-            TargetType::DotLocal => self.install_dir.as_ref()?.join("umamusume.exe.local").join(p),
-            TargetType::PluginShim => self.system_dir.join(p)
+        let install_dir = self.install_dir.as_ref()?;
+        Some(match self.get_install_method(target) {
+            InstallMethod::DotLocal => install_dir.join("umamusume.exe.local").join(p),
+            InstallMethod::PluginShim => self.system_dir.join(p),
+            InstallMethod::Direct => install_dir.join(p),
         })
     }
 
@@ -187,7 +227,7 @@ impl Installer {
     }
 
     pub fn pre_install(&self) -> Result<(), Error> {
-        if TargetType::from(self.target) == TargetType::PluginShim {
+        if self.get_install_method(self.target) == InstallMethod::PluginShim {
             let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
             let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
 
@@ -280,7 +320,7 @@ impl Installer {
                                     MB_ICONQUESTION | MB_YESNO
                                 )
                             };
-                            
+
                             if res == IDYES {
                                 if !backup_path.exists() {
                                     std::fs::copy(&manifest_path, &backup_path)?;
@@ -315,8 +355,8 @@ impl Installer {
     }
 
     pub fn post_install(&self) -> Result<(), Error> {
-        match TargetType::from(self.target) {
-            TargetType::DotLocal => {
+        match self.get_install_method(self.target) {
+            InstallMethod::DotLocal => {
                 // Install Cellar
                 let path = self.install_dir.as_ref()
                     .ok_or_else(|| Error::NoInstallDir)?
@@ -377,7 +417,7 @@ impl Installer {
                     }
                 }
             },
-            TargetType::PluginShim => {
+            InstallMethod::PluginShim => {
                 let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
                 let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
 
@@ -386,7 +426,8 @@ impl Installer {
                     std::fs::copy(&src_dll, &dest_dll)?;
                     std::fs::remove_file(&src_dll)?;
                 }
-            }
+            },
+            InstallMethod::Direct => {}
         }
 
         Ok(())
@@ -396,8 +437,8 @@ impl Installer {
         let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
         std::fs::remove_file(&path)?;
 
-        match TargetType::from(self.target) {
-            TargetType::DotLocal => {
+        match self.get_install_method(self.target) {
+            InstallMethod::DotLocal => {
                 let parent = path.parent().unwrap();
 
                 // Also delete Cellar
@@ -406,14 +447,15 @@ impl Installer {
                 // Only remove if its empty
                 _ = std::fs::remove_dir(parent);
             },
-            TargetType::PluginShim => {
+            InstallMethod::PluginShim => {
                 let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
                 let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
                 if !src_dll.exists() {
                     std::fs::copy(&dest_dll, &src_dll)?;
                     std::fs::remove_file(&dest_dll)?;
                 }
-            }
+            },
+            InstallMethod::Direct => {}
         }
 
         let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
@@ -424,7 +466,7 @@ impl Installer {
             let patched_exe_data = std::fs::read(&exe_path)?;
 
             const EXPECTED_PATCHED_HASH: &str = "9d6955463a0a509a2355d2227a4ee9ef0ca5da3f0f908b0c846a1e3c218cb703";
-            
+
             let mut hasher = Sha256::new();
             hasher.update(&patched_exe_data);
             let found_hash = hasher.finalize();
@@ -512,11 +554,18 @@ fn find_steamapps_folder(game_install_dir: &Path) -> Option<PathBuf> {
 
 impl Default for Installer {
     fn default() -> Installer {
-        let install_dir = Self::detect_dmm_install_dir()
-            .or_else(Self::detect_steam_install_dir);
+        let (install_dir, game_version) = 
+            if let Some(dmm_dir) = Self::detect_dmm_install_dir() {
+                (Some(dmm_dir), Some(GameVersion::DMM))
+            } else if let Some(steam_dir) = Self::detect_steam_install_dir() {
+                (Some(steam_dir), Some(GameVersion::Steam))
+            } else {
+                (None, None)
+            };
 
         Installer {
             install_dir,
+            game_version,
             target: Target::default(),
             custom_target: None,
             system_dir: get_system_directory(),
@@ -552,18 +601,10 @@ impl Default for Target {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-enum TargetType {
+enum InstallMethod {
     DotLocal,
-    PluginShim
-}
-
-impl From<Target> for TargetType {
-    fn from(value: Target) -> Self {
-        match value {
-            Target::UnityPlayer => Self::DotLocal,
-            Target::CriManaVpx => Self::PluginShim,
-        }
-    }
+    PluginShim,
+    Direct,
 }
 
 #[derive(Debug, Default)]
