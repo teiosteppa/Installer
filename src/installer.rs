@@ -268,7 +268,7 @@ impl Installer {
                 let mut exe_file = File::create(&patched_exe)?;
                 // i had to ask flippin gemini what i was supposed to do here
                 // thank you spoot
-                exe_file.write(include_bytes!("../UmamusumePrettyDerby_Jpn.exe"))?; 
+                exe_file.write(include_bytes!("../FunnyHoney.exe"))?; 
             }
         }
 
