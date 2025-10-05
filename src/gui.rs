@@ -97,7 +97,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             // Set icon
             let instance = unsafe { GetModuleHandleW(None).unwrap() };
             if let Ok(icon) = unsafe { LoadIconW(instance, IDI_HACHIMI) } {
-                unsafe { SendMessageW(dialog, WM_SETICON, WPARAM(ICON_BIG.0 as _), LPARAM(icon.0 as _)) };
+                unsafe { SendMessageW(dialog, WM_SETICON, WPARAM(ICON_BIG as _), LPARAM(icon.0 as _)) };
                 let _ = unsafe { DestroyIcon(icon) };
             }
 
