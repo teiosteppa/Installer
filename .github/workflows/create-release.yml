@@ -70,5 +70,5 @@ jobs:
           body: |
             ${{ steps.get_info.outputs.release_url }}
           files: |
-            artifacts/windows/*
+            artifacts/**
           tag_name: ${{ steps.get_info.outputs.latest_tag }}
