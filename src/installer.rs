@@ -1,10 +1,11 @@
-use std::{fs::File, io::Write, path::{Path, PathBuf}};
+use std::{fs::File, io::Write, path::{Path, PathBuf}, collections::HashMap, borrow::Cow,};
 
 use pelite::resources::version_info::Language;
 use registry::Hive;
-use tinyjson::JsonValue;
-use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
-
+// use tinyjson::JsonValue;
+// use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
+use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
+use keyvalues_parser::{Vdf, Value};
 use crate::utils::{self, get_system_directory};
 
 pub struct Installer {
@@ -26,55 +27,93 @@ impl Installer {
         }
     }
 
+    // todo: allow both dmm and steam to be installed with one exe
+    // original detect_install_dir:
+    //
+    // fn detect_dmm_install_dir() -> Option<PathBuf> {
+    //     let app_data_dir_wstr = unsafe { SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_DEFAULT, None).ok()? };
+    //     let app_data_dir_str = unsafe { app_data_dir_wstr.to_string().ok()? };
+    //     let app_data_dir = Path::new(&app_data_dir_str);
+    //     let mut dmm_config_path = app_data_dir.join("dmmgameplayer5");
+    //     dmm_config_path.push("dmmgame.cnf");
+
+    //     let config_str = std::fs::read_to_string(dmm_config_path).ok()?;
+    //     let JsonValue::Object(config) = config_str.parse().ok()? else {
+    //         return None;
+    //     };
+    //     let JsonValue::Array(config_contents) = &config["contents"] else {
+    //         return None;
+    //     };
+    //     for value in config_contents {
+    //         let JsonValue::Object(game) = value else {
+    //             return None;
+    //         };
+
+    //         let JsonValue::String(product_id) = &game["productId"] else {
+    //             continue;
+    //         };
+    //         if product_id != "umamusume" {
+    //             continue;
+    //         }
+
+    //         let JsonValue::Object(detail) = &game["detail"] else {
+    //             return None;
+    //         };
+    //         let JsonValue::String(path_str) = &detail["path"] else {
+    //             return None;
+    //         };
+
+    //         let path = PathBuf::from(path_str);
+    //         return if path.is_dir() {
+    //             Some(path)
+    //         }
+    //         else {
+    //             None
+    //         }
+    //     }
+
+    //     None
+    // }
+
+    fn detect_steam_install_dir() -> Option<PathBuf> {
+        let steam_reg_key = Hive::LocalMachine.open(r"SOFTWARE\Valve\Steam", registry::Security::Read)
+            .or_else(|_| Hive::LocalMachine.open(r"SOFTWARE\Wow6432Node\Valve\Steam", registry::Security::Read))
+            .ok()?;
+ 
+        let steam_path = match steam_reg_key.value("InstallPath").ok()? {
+            registry::Data::String(path) => PathBuf::from(path.to_string_lossy().to_owned()),
+            _ => return None,
+        };
+ 
+        // todo: iterate over 
+        let libraryfolders_path = steam_path.join("steamapps").join("libraryfolders.vdf");
+        let libraryfolders_vdf = std::fs::read_to_string(&libraryfolders_path).ok()?;
+        let libraryfolders = Vdf::parse(&libraryfolders_vdf).ok()?;
+        let default_library_str = libraryfolders.value.get_obj()?
+                                                .get("0")?.first()?
+                                                .get_obj()?.get("path")?.first()?.get_str()?;
+        let game_path = PathBuf::from(default_library_str).join("steamapps").join("common").join("UmamusumePrettyDerby_Jpn");
+        if game_path.is_dir() { return Some(game_path) };
+        None
+    }
+
     fn detect_install_dir() -> Option<PathBuf> {
-        let app_data_dir_wstr = unsafe { SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_DEFAULT, None).ok()? };
-        let app_data_dir_str = unsafe { app_data_dir_wstr.to_string().ok()? };
-        let app_data_dir = Path::new(&app_data_dir_str);
-        let mut dmm_config_path = app_data_dir.join("dmmgameplayer5");
-        dmm_config_path.push("dmmgame.cnf");
-
-        let config_str = std::fs::read_to_string(dmm_config_path).ok()?;
-        let JsonValue::Object(config) = config_str.parse().ok()? else {
-            return None;
-        };
-        let JsonValue::Array(config_contents) = &config["contents"] else {
-            return None;
-        };
-        for value in config_contents {
-            let JsonValue::Object(game) = value else {
-                return None;
-            };
-
-            let JsonValue::String(product_id) = &game["productId"] else {
-                continue;
-            };
-            if product_id != "umamusume" {
-                continue;
-            }
-
-            let JsonValue::Object(detail) = &game["detail"] else {
-                return None;
-            };
-            let JsonValue::String(path_str) = &detail["path"] else {
-                return None;
-            };
-
-            let path = PathBuf::from(path_str);
-            return if path.is_dir() {
-                Some(path)
-            }
-            else {
-                None
-            }
+        // lazy since this is a fork, just check for steam first & fallback to DMM (unimplemented)
+        if let Some(path) = Self::detect_steam_install_dir() {
+            return Some(path);
         }
+        // if let Some(path) = Self::detect_dmm_install_dir() {
+        //     return Some(path);
+        // }
 
         None
     }
+
     //something exe something something
     fn get_target_path_internal(&self, target: Target, p: impl AsRef<Path>) -> Option<PathBuf> {
         Some(match TargetType::from(target) {
-            TargetType::DotLocal => self.install_dir.as_ref()?.join("UmamusumePrettyDerby_Jpn.exe.local").join(p),
-            TargetType::PluginShim => self.system_dir.join(p)
+            // TargetType::DotLocal => self.install_dir.as_ref()?.join("UmamusumePrettyDerby_Jpn.exe.local").join(p),
+            TargetType::PluginShim => self.install_dir.as_ref()?.join(p)
         })
     }
 
@@ -163,94 +202,85 @@ impl Installer {
         #[cfg(not(feature = "compress_dll"))]
         file.write(include_bytes!("../hachimi.dll"))?;
 
-        let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
-        std::fs::create_dir_all(path.parent().unwrap())?;
-        let mut file = File::create(&path)?;
-
-        #[cfg(feature = "compress_dll")]
-        file.write(&include_bytes_zstd!("hachimi.dll", 19))?;
-
-        #[cfg(not(feature = "compress_dll"))]
-        file.write(include_bytes!("../hachimi.dll"))?;
-
-
-       
-        let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
-
-        //something exe idk
-        let exe_dest = install_path.join("UmamusumePrettyDerby_Jpn.exe");
-        std::fs::create_dir_all(exe_dest.parent().unwrap())?;
-        let mut exe_file = File::create(&exe_dest)?;
-        // i had to ask flippin gemini what i was supposed to do here
-        exe_file.write(include_bytes!("../UmamusumePrettyDerby_Jpn.exe"))?; 
-
         Ok(())
     }
 
+    // no .local redirection necessary on steam client, so dropped that, wheee
+    // greetz to uma on mac / linux
     pub fn post_install(&self) -> Result<(), Error> {
         match TargetType::from(self.target) {
-            TargetType::DotLocal => {
-                // Install Cellar
-                let path = self.install_dir.as_ref()
-                    .ok_or_else(|| Error::NoInstallDir)?
-                    .join("UmamusumePrettyDerby_Jpn.exe.local")
-                    .join("apphelp.dll");
-                std::fs::create_dir_all(path.parent().unwrap())?;
-                let mut file = File::create(&path)?;
+            // TargetType::DotLocal => {
+            //     // Install Cellar
+            //     let path = self.install_dir.as_ref()
+            //         .ok_or_else(|| Error::NoInstallDir)?
+            //         .join("UmamusumePrettyDerby_Jpn.exe.local")
+            //         .join("apphelp.dll");
+            //     std::fs::create_dir_all(path.parent().unwrap())?;
+            //     let mut file = File::create(&path)?;
 
-                #[cfg(feature = "compress_dll")]
-                file.write(&include_bytes_zstd!("cellar.dll", 19))?;
+            //     #[cfg(feature = "compress_dll")]
+            //     file.write(&include_bytes_zstd!("cellar.dll", 19))?;
 
-                #[cfg(not(feature = "compress_dll"))]
-                file.write(include_bytes!("../cellar.dll"))?;
+            //     #[cfg(not(feature = "compress_dll"))]
+            //     file.write(include_bytes!("../cellar.dll"))?;
 
-                // Check for DLL redirection
-                match Hive::LocalMachine.open(
-                    r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options",
-                    registry::Security::Read | registry::Security::SetValue
-                ) {
-                    Ok(regkey) => {
-                        if regkey.value("DevOverrideEnable")
-                            .ok()
-                            .map(|v| match v {
-                                registry::Data::U32(v) => v,
-                                _ => 0
-                            })
-                            .unwrap_or(0) == 0
-                        {
-                            let res = unsafe {
-                                MessageBoxW(
-                                    self.hwnd.as_ref(),
-                                    w!("DotLocal DLL redirection is not enabled. This is required for the specified install target.\n\
-                                        Would you like to enable it?"),
-                                    w!("Install"),
-                                    MB_ICONINFORMATION | MB_OKCANCEL
-                                )
-                            };
-                            if res == IDOK {
-                                regkey.set_value("DevOverrideEnable", &registry::Data::U32(1))?;
-                                unsafe {
-                                    MessageBoxW(
-                                        self.hwnd.as_ref(),
-                                        w!("Restart your computer to apply the changes."),
-                                        w!("DLL redirection enabled"),
-                                        MB_ICONINFORMATION | MB_OK
-                                    );
-                                }
-                            }
-                        }
-                    },
-                    Err(e) => {
-                        unsafe { MessageBoxW(
-                            self.hwnd.as_ref(),
-                            &HSTRING::from(format!("Failed to open IFEO registry key: {}", e)),
-                            w!("Warning"),
-                            MB_OK | MB_ICONWARNING
-                        )};
-                    }
-                }
-            },
+            //     // Check for DLL redirection
+            //     match Hive::LocalMachine.open(
+            //         r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options",
+            //         registry::Security::Read | registry::Security::SetValue
+            //     ) {
+            //         Ok(regkey) => {
+            //             if regkey.value("DevOverrideEnable")
+            //                 .ok()
+            //                 .map(|v| match v {
+            //                     registry::Data::U32(v) => v,
+            //                     _ => 0
+            //                 })
+            //                 .unwrap_or(0) == 0
+            //             {
+            //                 let res = unsafe {
+            //                     MessageBoxW(
+            //                         self.hwnd.as_ref(),
+            //                         w!("DotLocal DLL redirection is not enabled. This is required for the specified install target.\n\
+            //                             Would you like to enable it?"),
+            //                         w!("Install"),
+            //                         MB_ICONINFORMATION | MB_OKCANCEL
+            //                     )
+            //                 };
+            //                 if res == IDOK {
+            //                     regkey.set_value("DevOverrideEnable", &registry::Data::U32(1))?;
+            //                     unsafe {
+            //                         MessageBoxW(
+            //                             self.hwnd.as_ref(),
+            //                             w!("Restart your computer to apply the changes."),
+            //                             w!("DLL redirection enabled"),
+            //                             MB_ICONINFORMATION | MB_OK
+            //                         );
+            //                     }
+            //                 }
+            //             }
+            //         },
+            //         Err(e) => {
+            //             unsafe { MessageBoxW(
+            //                 self.hwnd.as_ref(),
+            //                 &HSTRING::from(format!("Failed to open IFEO registry key: {}", e)),
+            //                 w!("Warning"),
+            //                 MB_OK | MB_ICONWARNING
+            //             )};
+            //         }
+            //     }
+            // },
             TargetType::PluginShim => {
+            
+                let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
+
+                //something exe idk
+                let exe_dest = install_path.join("UmamusumePrettyDerby_Jpn.exe");
+                std::fs::create_dir_all(exe_dest.parent().unwrap())?;
+                let mut exe_file = File::create(&exe_dest)?;
+                // i had to ask flippin gemini what i was supposed to do here
+                // thank you spoot
+                exe_file.write(include_bytes!("../UmamusumePrettyDerby_Jpn.exe"))?; 
                 let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
                 let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
 
@@ -270,15 +300,15 @@ impl Installer {
         std::fs::remove_file(&path)?;
 
         match TargetType::from(self.target) {
-            TargetType::DotLocal => {
-                let parent = path.parent().unwrap();
+            // TargetType::DotLocal => {
+            //     let parent = path.parent().unwrap();
 
-                // Also delete Cellar
-                _ = std::fs::remove_file(parent.join("apphelp.dll"));
+            //     // Also delete Cellar
+            //     _ = std::fs::remove_file(parent.join("apphelp.dll"));
 
-                // Only remove if its empty
-                _ = std::fs::remove_dir(parent);
-            },
+            //     // Only remove if its empty
+            //     _ = std::fs::remove_dir(parent);
+            // },
             TargetType::PluginShim => {
                 let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
                 let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
@@ -315,19 +345,19 @@ impl Default for Installer {
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Target {
-    UnityPlayer,
+    // UnityPlayer,
     CriManaVpx
 }
 
 impl Target {
     pub const VALUES: &[Self] = &[
-        Self::UnityPlayer,
+        // Self::UnityPlayer,
         Self::CriManaVpx
     ];
 
     pub fn dll_name(&self) -> &'static str {
         match self {
-            Self::UnityPlayer => "UnityPlayer.dll",
+            // Self::UnityPlayer => "UnityPlayer.dll",
             Self::CriManaVpx => "cri_mana_vpx.dll"
         }
     }
@@ -335,20 +365,21 @@ impl Target {
 
 impl Default for Target {
     fn default() -> Self {
-        Self::UnityPlayer
+        // Self::UnityPlayer
+        Self::CriManaVpx
     }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum TargetType {
-    DotLocal,
+    // DotLocal,
     PluginShim
 }
 
 impl From<Target> for TargetType {
     fn from(value: Target) -> Self {
         match value {
-            Target::UnityPlayer => Self::DotLocal,
+            // Target::UnityPlayer => Self::DotLocal,
             Target::CriManaVpx => Self::PluginShim,
         }
     }
