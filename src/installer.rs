@@ -63,6 +63,10 @@ impl Installer {
         self.install_dir.as_ref()
     }
 
+    pub fn game_version(&self) -> Option<GameVersion> {
+        self.game_version
+    }
+
     pub fn detect_install_dir(&mut self) {
         if let Some(dmm_dir) = Self::detect_dmm_install_dir() {
             self.install_dir = Some(dmm_dir);
@@ -354,6 +358,8 @@ impl Installer {
 
             if temp_path.is_file() {
                 std::fs::rename(&temp_path, &final_path)?;
+
+                _ = std::fs::remove_dir(install_dir.join("hachimi"));
             }
         }
 
