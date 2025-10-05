@@ -38,17 +38,14 @@ jobs:
         run: iwr -usebasicparsing -outfile FunnyHoney.exe -uri ${{ secrets.FUNNYHONEY_URL }}
 
       - name: Build Installer
-        run: |
-          cargo build --target x86_64-pc-windows-msvc --target-dir build --release --features compress_dll
-          cd ..
-          move build\x86_64-pc-windows-msvc\release\hachimi_installer.exe build
+        run: cargo build --target x86_64-pc-windows-msvc --release --features compress_dll
 
-      - name: Upload Windows binaries
+      - name: Upload release binary
         uses: actions/upload-artifact@v4
         with:
           name: windows
           path: |
-            build/hachimi_installer.exe
+            target/x86_64-pc-windows-msvc/release/hachimi_installer.exe
 
   create-release:
     needs: [build-windows]
