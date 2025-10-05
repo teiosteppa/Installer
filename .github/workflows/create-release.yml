@@ -77,7 +77,7 @@ jobs:
       - name: Get latest release info from Hachimi-Edge
         id: get_info
         run: |
-          export release_info=$(curl -sL "https://api.github.com/repos/kairu-sds/Hachimi-Edge/releases/latest")
+          export release_info=$(curl -sL "https://api.github.com/repos/kairusds/Hachimi-Edge/releases/latest")
           echo "latest_tag=$(echo $release_info | jq -r .tag_name)" >> $GITHUB_OUTPUT
           echo "release_url=$(echo $release_info | jq -r .html_url)" >> $GITHUB_OUTPUT
 
@@ -91,6 +91,7 @@ jobs:
         with:
           body: |
             ${{ steps.get_info.outputs.release_url }}
+          generate_release_notes: true
           files: |
             artifacts/**
           tag_name: ${{ steps.get_info.outputs.latest_tag }}
