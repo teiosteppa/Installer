@@ -1,4 +1,4 @@
-# Hachimi Installer
+# Hachimi Installer for Steam
 Simple installer for Hachimi.
 
 # Usage
