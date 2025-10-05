@@ -55,7 +55,7 @@ jobs:
       - name: Get latest release info from Hachimi-Edge
         id: get_info
         run: |
-          release_info=$(curl -sL "https://api.github.com/repos/kairu-sds/Hachimi-Edge/releases/latest")
+          export release_info=$(curl -sL "https://api.github.com/repos/kairu-sds/Hachimi-Edge/releases/latest")
           echo "latest_tag=$(echo $release_info | jq -r .tag_name)" >> $GITHUB_OUTPUT
           echo "release_url=$(echo $release_info | jq -r .html_url)" >> $GITHUB_OUTPUT
 
