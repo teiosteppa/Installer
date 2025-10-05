@@ -75,10 +75,10 @@ impl Installer {
     // }
 
     fn detect_steam_install_dir() -> Option<PathBuf> {
-        let steam_dir = steamlocate::SteamDir::locate().unwrap();
+        let steam_dir = steamlocate::SteamDir::locate().ok()?;
         let (uma_musume_steamapp, _lib) = steam_dir
             .find_app(3564400)
-            .unwrap()?;
+            .ok()??;
         let game_path = _lib.resolve_app_dir(&uma_musume_steamapp);
         if game_path.is_dir() { return Some(game_path) };
         None
