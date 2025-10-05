@@ -120,10 +120,6 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             let mut default_target_set = false;
             let mut multiple_installs = false;
             for (i, target) in installer::Target::VALUES.into_iter().enumerate() {
-                if installer.game_version() == Some(installer::GameVersion::Steam) && *target == installer::Target::UnityPlayer {
-                    continue;
-                }
-
                 let label = if let Some(version_info) = installer.get_target_version_info(*target) {
                     if version_info.is_hachimi() {
                         if default_target_set {
