@@ -1,10 +1,10 @@
-use steamlocate::SteamDir;
 use std::{fs::File, io::Write, path::{Path, PathBuf}};
 
 use bsdiff::patch;
 use pelite::resources::version_info::Language;
 use registry::Hive;
 use sha2::{Digest, Sha256};
+use steamlocate::SteamDir;
 use tinyjson::JsonValue;
 use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, IDYES, MB_ICONINFORMATION, MB_ICONWARNING, MB_ICONQUESTION, MB_OK, MB_OKCANCEL, MB_YESNO}}}};
 
@@ -17,8 +17,9 @@ pub enum GameVersion {
 }
 
 pub struct Installer {
-    pub install_dir: Option<PathBuf>,
-    pub game_version: Option<GameVersion>,
+    install_dir: Option<PathBuf>,
+    game_version: Option<GameVersion>,
+    
     pub target: Target,
     pub custom_target: Option<String>,
     system_dir: PathBuf,
@@ -26,33 +27,49 @@ pub struct Installer {
 }
 
 impl Installer {
-    pub fn custom(install_dir: Option<PathBuf>, target: Target, custom_target: Option<String>) -> Installer {
-        let (resolved_install_dir, game_version) =
-            if let Some(dir) = install_dir {
-                if dir.join("umamusume.exe").is_file() {
-                    (Some(dir), Some(GameVersion::DMM))
-                } else if dir.join("UmamusumePrettyDerby_Jpn.exe").is_file() {
-                    (Some(dir), Some(GameVersion::Steam))
-                } else {
-                    (Some(dir), None)
-                }
-            } else {
-                if let Some(dmm_dir) = Self::detect_dmm_install_dir() {
-                    (Some(dmm_dir), Some(GameVersion::DMM))
-                } else if let Some(steam_dir) = Self::detect_steam_install_dir() {
-                    (Some(steam_dir), Some(GameVersion::Steam))
-                } else {
-                    (None, None)
-                }
-            };
+    fn detect_version_from_dir(dir: &Path) -> Option<GameVersion> {
+        if dir.join("umamusume.exe").is_file() {
+            Some(GameVersion::DMM)
+        } else if dir.join("UmamusumePrettyDerby_Jpn.exe").is_file() {
+            Some(GameVersion::Steam)
+        } else {
+            None
+        }
+    }
 
+    pub fn new(target: Target, custom_target: Option<String>) -> Installer {
         Installer {
-            install_dir: resolved_install_dir,
-            game_version,
+            install_dir: None,
+            game_version: None,
             target,
             custom_target,
             system_dir: get_system_directory(),
             hwnd: None
+        }
+    }
+
+    pub fn set_install_dir(&mut self, dir: PathBuf) -> Result<(), Error> {
+        match Self::detect_version_from_dir(&dir) {
+            Some(version) => {
+                self.install_dir = Some(dir);
+                self.game_version = Some(version);
+                Ok(())
+            }
+            None => Err(Error::InvalidInstallDir)
+        }
+    }
+
+    pub fn install_dir(&self) -> Option<&PathBuf> {
+        self.install_dir.as_ref()
+    }
+
+    pub fn detect_install_dir(&mut self) {
+        if let Some(dmm_dir) = Self::detect_dmm_install_dir() {
+            self.install_dir = Some(dmm_dir);
+            self.game_version = Some(GameVersion::DMM);
+        } else if let Some(steam_dir) = Self::detect_steam_install_dir() {
+            self.install_dir = Some(steam_dir);
+            self.game_version = Some(GameVersion::Steam);
         }
     }
 
@@ -134,7 +151,14 @@ impl Installer {
     fn get_target_path_internal(&self, target: Target, p: impl AsRef<Path>) -> Option<PathBuf> {
         let install_dir = self.install_dir.as_ref()?;
         Some(match self.get_install_method(target) {
-            InstallMethod::DotLocal => install_dir.join("umamusume.exe.local").join(p),
+            InstallMethod::DotLocal => {
+                let exe_name = match self.game_version {
+                    Some(GameVersion::Steam) => "UmamusumePrettyDerby_Jpn.exe",
+                    _ => "umamusume.exe",
+                };
+                let local_folder_name = format!("{}.local", exe_name);
+                install_dir.join(local_folder_name).join(p)
+            }
             InstallMethod::PluginShim => self.system_dir.join(p),
             InstallMethod::Direct => install_dir.join(p),
         })
@@ -182,11 +206,9 @@ impl Installer {
         let Some(path) = self.get_current_target_path() else {
             return false;
         };
-
         let Ok(metadata) = std::fs::metadata(&path) else {
             return false;
         };
-
         metadata.is_file()
     }
 
@@ -210,7 +232,6 @@ impl Installer {
                 return Err(Error::CannotFindTarget);
             }
         }
-
         Ok(())
     }
 
@@ -246,8 +267,8 @@ impl Installer {
             let found_hash = hasher.finalize();
             let found_hash_str = format!("{:x}", found_hash);
 
-            if found_hash_str.to_lowercase() == NOPATCH_HASH.to_lowercase() {} else {
-                return Err(Error::VerificationError(format!(
+            if found_hash_str.to_lowercase() != NOPATCH_HASH.to_lowercase() {
+                 return Err(Error::VerificationError(format!(
                     "Found umamusume.exe, but its hash is incorrect. Expected {}, but found {}",
                     NOPATCH_HASH, found_hash_str
                 )));
@@ -263,12 +284,9 @@ impl Installer {
                 let patch_data = include_bytes!("../umamusume.patch");
                 let temp_exe_path = steam_exe_path.with_extension("exe.tmp");
                 let mut temp_exe_file = File::create(&temp_exe_path)?;
-
                 let mut new_exe_data = Vec::new();
                 patch(&original_exe_data, &mut std::io::Cursor::new(patch_data), &mut new_exe_data)?;
-
                 temp_exe_file.write_all(&new_exe_data)?;
-
                 std::fs::remove_file(&steam_exe_path)?;
                 std::fs::rename(&temp_exe_path, &steam_exe_path)?;
             } else {
@@ -284,45 +302,38 @@ impl Installer {
             )));
         }
 
-        if let Some(install_dir) = &self.install_dir {
-            if let Some(steamapps_path) = find_steamapps_folder(install_dir) {
-                const STEAM_APP_ID: &str = "3564400";
-                let manifest_path = steamapps_path.join(format!("appmanifest_{}.acf", STEAM_APP_ID));
-                let backup_path = manifest_path.with_extension("acf.bak");
+        if self.game_version == Some(GameVersion::Steam) {
+            if let Some(install_dir) = &self.install_dir {
+                if let Some(steamapps_path) = find_steamapps_folder(install_dir) {
+                    const STEAM_APP_ID: &str = "3564400";
+                    let manifest_path = steamapps_path.join(format!("appmanifest_{}.acf", STEAM_APP_ID));
+                    let backup_path = manifest_path.with_extension("acf.bak");
 
-                if manifest_path.is_file() {
-                    if let Ok(content) = std::fs::read_to_string(&manifest_path) {
-                        if !content.contains("\"AutoUpdateBehavior\"\t\t\"1\"") {
-                             let res = unsafe {
-                                MessageBoxW(
-                                    self.hwnd.as_ref(),
-                                    w!("To prevent accidental updates that could break the mod, would you like to change Steam's auto-update setting for this game to 'Update only when I launch it'?\n\nA backup of your original setting will be made."),
-                                    w!("Change Auto-Update Setting?"),
-                                    MB_ICONQUESTION | MB_YESNO
-                                )
-                            };
-
-                            if res == IDYES {
-                                if !backup_path.exists() {
-                                    std::fs::copy(&manifest_path, &backup_path)?;
-                                }
-
-                                let new_content = if content.contains("\"AutoUpdateBehavior\"\t\t\"0\"") {
-                                    content.replace("\"AutoUpdateBehavior\"\t\t\"0\"", "\"AutoUpdateBehavior\"\t\t\"1\"")
-                                } else if content.contains("\"AutoUpdateBehavior\"\t\t\"2\"") {
-                                    content.replace("\"AutoUpdateBehavior\"\t\t\"2\"", "\"AutoUpdateBehavior\"\t\t\"1\"")
-                                } else {
-                                    content
+                    if manifest_path.is_file() {
+                        if let Ok(content) = std::fs::read_to_string(&manifest_path) {
+                            if !content.contains("\"AutoUpdateBehavior\"\t\t\"1\"") {
+                                let res = unsafe {
+                                    MessageBoxW(
+                                        self.hwnd.as_ref(),
+                                        w!("To prevent accidental updates that could break the mod, would you like to change Steam's auto-update setting for this game to 'Update only when I launch it'?\n\nA backup of your original setting will be made."),
+                                        w!("Change Auto-Update Setting?"),
+                                        MB_ICONQUESTION | MB_YESNO
+                                    )
                                 };
-
-                                if std::fs::write(&manifest_path, new_content).is_ok() {
-                                    unsafe {
-                                        MessageBoxW(
-                                            self.hwnd.as_ref(),
-                                            w!("Steam's auto-update setting for this game has been changed."),
-                                            w!("Auto-update Setting Changed"),
-                                            MB_ICONINFORMATION | MB_OK
-                                        );
+                                if res == IDYES {
+                                    if !backup_path.exists() {
+                                        std::fs::copy(&manifest_path, &backup_path)?;
+                                    }
+                                    let new_content = content.replace("\"AutoUpdateBehavior\"\t\t\"0\"", "\"AutoUpdateBehavior\"\t\t\"1\"");
+                                    if std::fs::write(&manifest_path, new_content).is_ok() {
+                                        unsafe {
+                                            MessageBoxW(
+                                                self.hwnd.as_ref(),
+                                                w!("Steam's auto-update setting for this game has been changed."),
+                                                w!("Auto-update Setting Changed"),
+                                                MB_ICONINFORMATION | MB_OK
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -343,16 +354,18 @@ impl Installer {
 
             if temp_path.is_file() {
                 std::fs::rename(&temp_path, &final_path)?;
+
+                _ = std::fs::remove_dir(install_dir.join("hachimi"));
             }
         }
 
         match self.get_install_method(self.target) {
             InstallMethod::DotLocal => {
                 // Install Cellar
-                let path = self.install_dir.as_ref()
-                    .ok_or_else(|| Error::NoInstallDir)?
-                    .join("umamusume.exe.local")
-                    .join("apphelp.dll");
+                let main_dll_path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
+                let parent_dir = main_dll_path.parent().unwrap();
+
+                let path = parent_dir.join("apphelp.dll");
                 std::fs::create_dir_all(path.parent().unwrap())?;
                 let mut file = File::create(&path)?;
 
@@ -420,7 +433,6 @@ impl Installer {
             },
             InstallMethod::Direct => {}
         }
-
         Ok(())
     }
 
@@ -431,10 +443,8 @@ impl Installer {
         match self.get_install_method(self.target) {
             InstallMethod::DotLocal => {
                 let parent = path.parent().unwrap();
-
                 // Also delete Cellar
                 _ = std::fs::remove_file(parent.join("apphelp.dll"));
-
                 // Only remove if its empty
                 _ = std::fs::remove_dir(parent);
             },
@@ -465,9 +475,7 @@ impl Installer {
 
             if found_hash_str.to_lowercase() == EXPECTED_PATCHED_HASH.to_lowercase() {
                 let mut original_exe_data = Vec::new();
-
                 patch(&patched_exe_data, &mut std::io::Cursor::new(reverse_patch_data), &mut original_exe_data)?;
-
                 let temp_exe_path = exe_path.with_extension("exe.tmp");
                 std::fs::write(&temp_exe_path, &original_exe_data)?;
                 std::fs::rename(&temp_exe_path, &exe_path)?;
@@ -515,7 +523,6 @@ impl Installer {
                 }
             }
         }
-
         Ok(())
     }
 
@@ -545,23 +552,9 @@ fn find_steamapps_folder(game_install_dir: &Path) -> Option<PathBuf> {
 
 impl Default for Installer {
     fn default() -> Installer {
-        let (install_dir, game_version) = 
-            if let Some(dmm_dir) = Self::detect_dmm_install_dir() {
-                (Some(dmm_dir), Some(GameVersion::DMM))
-            } else if let Some(steam_dir) = Self::detect_steam_install_dir() {
-                (Some(steam_dir), Some(GameVersion::Steam))
-            } else {
-                (None, None)
-            };
-
-        Installer {
-            install_dir,
-            game_version,
-            target: Target::default(),
-            custom_target: None,
-            system_dir: get_system_directory(),
-            hwnd: None
-        }
+        let mut installer = Self::new(Target::default(), None);
+        installer.detect_install_dir();
+        installer
     }
 }
 
@@ -621,6 +614,7 @@ impl TargetVersionInfo {
 #[derive(Debug)]
 pub enum Error {
     NoInstallDir,
+    InvalidInstallDir,
     CannotFindTarget,
     IoError(std::io::Error),
     RegistryValueError(registry::value::Error),
@@ -631,6 +625,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::NoInstallDir => write!(f, "No install location specified"),
+            Error::InvalidInstallDir => write!(f, "Invalid game folder. The selected folder does not contain umamusume.exe or UmamusumePrettyDerby_Jpn.exe."),
             Error::CannotFindTarget => write!(f, "Cannot find target DLL in specified install location"),
             Error::IoError(e) => write!(f, "I/O error: {}", e),
             Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e),

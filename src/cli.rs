@@ -121,19 +121,6 @@ pub fn run(update_status: &UpdateStatus) -> Result<bool, installer::Error> {
             }
         }
 
-        if args.install_dir.is_none() {
-            if let Some(target) = &args.target {
-                // Check if target is an absolute path;
-                // If it is, set the install dir unconditionally so that it will be completely
-                // overridden by the target later (without relying on install dir detection)
-                let target_path = Path::new(target);
-                if target_path.is_absolute() {
-                    // Doesn't matter which path it is, just use the target path
-                    args.install_dir = Some(target_path.into());
-                }
-            }
-        }
-
         let explicit_target = args.explicit_target.or_else(|| {
             let target_name = Path::new(args.target.as_ref()?).file_name()?;
             let target_name_str = target_name.to_string_lossy().to_ascii_lowercase();
@@ -156,29 +143,47 @@ pub fn run(update_status: &UpdateStatus) -> Result<bool, installer::Error> {
             std::process::exit(128);
         });
 
-        let installer = Installer::custom(args.install_dir, explicit_target, args.target);
-        let res = match command {
-            Command::Install => {
-                let mut res = Ok(());
-                if args.pre_install {
-                    res = res.and_then(|_| installer.pre_install());
+        let mut installer = Installer::new(explicit_target, args.target);
+
+        if let Some(dir) = args.install_dir {
+            if let Err(e) = installer.set_install_dir(dir) {
+                unsafe { MessageBoxW(None, &HSTRING::from(e.to_string()), w!("Hachimi Installer"), MB_ICONERROR | MB_OK); }
+                return Err(e);
+            }
+        } else {
+            installer.detect_install_dir();
+        }
+
+        let res: Result<(), installer::Error> = (|| {
+            match command {
+                Command::Install => {
+                    if args.pre_install {
+                        installer.pre_install()?;
+                    }
+                    installer.install()?;
+                    if args.post_install {
+                        installer.post_install()?;
+                    }
+                },
+                Command::Uninstall => {
+                    installer.uninstall()?;
                 }
-                res = res.and_then(|_| installer.install());
-                if args.post_install {
-                    res = res.and_then(|_| installer.post_install());
-                }
-                res
-            },
-            Command::Uninstall => installer.uninstall()
-        };
+            }
+            Ok(())
+        })();
+
         if let Err(e) = res {
             unsafe { MessageBoxW(None, &HSTRING::from(e.to_string()), w!("Hachimi Installer"), MB_ICONERROR | MB_OK); }
             return Err(e);
         }
 
         if args.launch_game {
-            let game_dir = installer.install_dir.unwrap();
-            let exe_path = game_dir.join("umamusume.exe");
+            let game_dir = installer.install_dir().unwrap();
+            let exe_path = if game_dir.join("UmamusumePrettyDerby_Jpn.exe").is_file() {
+                game_dir.join("UmamusumePrettyDerby_Jpn.exe")
+            } else {
+                game_dir.join("umamusume.exe")
+            };
             unsafe {
                 ShellExecuteW(
                     None,

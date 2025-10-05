@@ -102,7 +102,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             }
 
             // Set install path
-            if let Some(path) = &installer.install_dir {
+            if let Some(path) = installer.install_dir() {
                 let install_path_edit = GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap();
                 _ = SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap()));
             }
@@ -142,7 +142,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             update_target(dialog, target_combo, default_target);
 
             // Show notice if install dir is not detected
-            if installer.install_dir.is_none() {
+            if installer.install_dir().is_none() {
                 MessageBoxW(
                     dialog,
                     w!("Failed to detect the game's install location. Please select it manually."),
@@ -175,15 +175,21 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                     let installer = get_installer(dialog);
                     let Some(path) = utils::open_select_folder_dialog(
                         dialog,
-                        installer.install_dir.as_ref().filter(|p| p.is_dir())
+                        installer.install_dir().filter(|p| p.is_dir())
                     ) else {
                         return 1;
                     };
 
-                    let install_path_edit = GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap();
-                    _ = SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap()));
+                        match installer.set_install_dir(path.clone()) {
+                            Ok(_) => {
+                                let install_path_edit = GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap();
+                                _ = SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap()));
+                            }
+                            Err(e) => {
+                                MessageBoxW(dialog, &HSTRING::from(e.to_string()), w!("Error"), MB_ICONERROR | MB_OK);
+                            }
+                        }
 
-                    installer.install_dir = Some(path);
                     update_target(dialog, GetDlgItem(dialog, IDC_TARGET).unwrap(), installer.target as _);
                 }
 
@@ -254,7 +260,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             }
 
                             // Check if the hachimi data dir exists and prompt user to delete it
-                            let hachimi_dir = installer.install_dir.as_ref().unwrap().join("hachimi");
+                            let hachimi_dir = installer.install_dir().as_ref().unwrap().join("hachimi");
                             let Ok(metadata) = std::fs::metadata(&hachimi_dir) else {
                                 return 0;
                             };
