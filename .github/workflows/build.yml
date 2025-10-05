@@ -63,6 +63,7 @@ jobs:
 
       - name: Build Cellar DLL
         run: cargo build --release
+        working-directory: ./Cellar
 
       - name: Copy dependency DLLs to root
         run: |
