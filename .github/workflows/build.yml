@@ -63,9 +63,6 @@ jobs:
       - name: Build Installer executable
         run: cargo build --release --features compress_dll
 
-      - name: Show sccache stats
-        run: sccache --show-stats
-
       - name: Upload Artifact for inspection
         uses: actions/upload-artifact@v4
         with:
