@@ -20,7 +20,6 @@ jobs:
 
     env:
       CARGO_TERM_COLOR: always
-      RUSTC_WRAPPER: sccache
       ARTIFACT_NAME: hachimi_installer.exe
 
     steps:
@@ -41,18 +40,8 @@ jobs:
           repository: Hachimi-Hachimi/Cellar
           path: Cellar
 
-      - name: Setup sccache for build caching
-        uses: mozilla-actions/sccache-action@v0.0.5
-
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
