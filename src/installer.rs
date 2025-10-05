@@ -240,9 +240,15 @@ impl Installer {
     }
 
     pub fn install(&self) -> Result<(), Error> {
-        let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
-        std::fs::create_dir_all(path.parent().unwrap())?;
-        let mut file = File::create(&path)?;
+        let initial_dll_path = if self.target == Target::CriManaVpx && self.game_version == Some(GameVersion::Steam) {
+            let install_dir = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
+            install_dir.join("hachimi").join(self.target.dll_name())
+        } else {
+            self.get_current_target_path().ok_or(Error::NoInstallDir)?
+        };
+
+        std::fs::create_dir_all(initial_dll_path.parent().unwrap())?;
+        let mut file = File::create(&initial_dll_path)?;
 
         #[cfg(feature = "compress_dll")]
         file.write(&include_bytes_zstd!("hachimi.dll", 19))?;
@@ -355,6 +361,16 @@ impl Installer {
     }
 
     pub fn post_install(&self) -> Result<(), Error> {
+        if self.target == Target::CriManaVpx && self.game_version == Some(GameVersion::Steam) {
+            let install_dir = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
+            let temp_path = install_dir.join("hachimi").join(self.target.dll_name());
+            let final_path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
+
+            if temp_path.is_file() {
+                std::fs::rename(&temp_path, &final_path)?;
+            }
+        }
+
         match self.get_install_method(self.target) {
             InstallMethod::DotLocal => {
                 // Install Cellar
