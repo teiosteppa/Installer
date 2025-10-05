@@ -2,6 +2,11 @@ name: Create Release
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Build a release, even if up to date"
+        required: false
+        type: boolean
 
 permissions:
   contents: write
@@ -29,7 +34,7 @@ jobs:
 
       - name: Checkout latest extension release
         id: checkout-new
-        if: ${{ steps.local-release.outputs.LOCAL_RELEASE != steps.remote-release.outputs.REMOTE_RELEASE }}
+        if: ${{ (steps.local-release.outputs.LOCAL_RELEASE != steps.remote-release.outputs.REMOTE_RELEASE) || inputs.force == true }}
         env:
           DLL_URL: ${{ steps.remote-release.outputs.DLL_URL }}
         run: iwr -usebasicparsing -outfile hachimi.dll -uri $ENV:DLL_URL
@@ -55,9 +60,9 @@ jobs:
       - name: Get latest release info from Hachimi-Edge
         id: get_info
         run: |
-          release_info=$(curl -sL "https://api.github.com/repos/kairu-sds/Hachimi-Edge/releases/latest" | jq -r '{tag: .tag_name, url: .html_url}')
-          echo "latest_tag=$(echo $release_info | jq -r .tag)" >> $GITHUB_OUTPUT
-          echo "release_url=$(echo $release_info | jq -r .url)" >> $GITHUB_OUTPUT
+          export release_info=$(curl -sL "https://api.github.com/repos/kairusds/Hachimi-Edge/releases/latest")
+          echo "latest_tag=$(echo $release_info | jq -r .tag_name)" >> $GITHUB_OUTPUT
+          echo "release_url=$(echo $release_info | jq -r .html_url)" >> $GITHUB_OUTPUT
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v5
@@ -69,6 +74,7 @@ jobs:
         with:
           body: |
             ${{ steps.get_info.outputs.release_url }}
+          generate_release_notes: true
           files: |
-            artifacts/windows/*
+            artifacts/**
           tag_name: ${{ steps.get_info.outputs.latest_tag }}
