@@ -2,6 +2,11 @@ name: Create Release
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Build a release, even if up to date"
+        required: false
+        type: boolean
 
 permissions:
   contents: write
@@ -51,7 +56,7 @@ jobs:
 
       - name: Checkout latest extension release
         id: checkout-new
-        if: ${{ steps.local-release.outputs.LOCAL_RELEASE != steps.remote-release.outputs.REMOTE_RELEASE }}
+        if: ${{ (steps.local-release.outputs.LOCAL_RELEASE != steps.remote-release.outputs.REMOTE_RELEASE) || inputs.force == true }}
         env:
           DLL_URL: ${{ steps.remote-release.outputs.DLL_URL }}
         run: iwr -usebasicparsing -outfile hachimi.dll -uri $ENV:DLL_URL
