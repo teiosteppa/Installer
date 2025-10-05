@@ -40,7 +40,7 @@ pub fn run(update_status: UpdateStatus) -> Result<(), windows::core::Error> {
         CreateDialogParamW(instance, IDD_MAIN, None, Some(dlg_proc), LPARAM(installer.as_mut() as *mut _ as _))
     }?;
     utils::center_window(dialog)?;
-    unsafe { _ = ShowWindow(dialog, SW_SHOW) };
+    let _ = unsafe { ShowWindow(dialog, SW_SHOW) };
     installer.hwnd = Some(dialog);
 
     let mut message = MSG::default();
@@ -97,8 +97,8 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             // Set icon
             let instance = unsafe { GetModuleHandleW(None).unwrap() };
             if let Ok(icon) = unsafe { LoadIconW(instance, IDI_HACHIMI) } {
-                unsafe { SendMessageW(dialog, WM_SETICON, WPARAM(ICON_BIG as _), LPARAM(icon.0 as _)) };
-                _ = unsafe { DestroyIcon(icon) };
+                unsafe { SendMessageW(dialog, WM_SETICON, WPARAM(ICON_BIG.0 as _), LPARAM(icon.0 as _)) };
+                let _ = unsafe { DestroyIcon(icon) };
             }
 
             let installer = get_installer(dialog);
