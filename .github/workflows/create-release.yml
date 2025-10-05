@@ -17,12 +17,12 @@ jobs:
         id: remote-release
         run: |
           $release = irm -uri "https://api.github.com/repos/kairusds/Hachimi-Edge/releases/latest" -method GET
-          echo "::set-output name=REMOTE_RELEASE::$($release.tag_name)"
-          echo "::set-output name=DLL_URL::$($release.assets | where name -eq "hachimi.dll" | select browser_download_url | %{$_.browser_download_url})"
+          echo "REMOTE_RELEASE=$($release.tag_name)" >> $GITHUB_OUTPUT
+          echo "DLL_URL=$($release.assets | where name -eq "hachimi.dll" | select browser_download_url | %{$_.browser_download_url})" >> $GITHUB_OUTPUT
 
       - name: Fetch local release version
         id: local-release
-        run: echo "::set-output name=LOCAL_RELEASE::$(git describe --tags --abbrev=0)"
+        run: echo "LOCAL_RELEASE=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
 
       - name: Checkout latest extension release
         id: checkout-new
