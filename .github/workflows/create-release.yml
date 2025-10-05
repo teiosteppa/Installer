@@ -20,19 +20,17 @@ jobs:
         id: remote-release
         run: |
           $release = irm -uri "https://api.github.com/repos/kairusds/Hachimi-Edge/releases/latest" -method GET
-          echo "REMOTE_RELEASE=$($release.tag_name)" >> $GITHUB_OUTPUT
-          echo "DLL_URL=$($release.assets | where name -eq "hachimi.dll" | select browser_download_url | %{$_.browser_download_url})" >> $GITHUB_OUTPUT
+          echo "REMOTE_RELEASE=$($release.tag_name)" >> $Env:GITHUB_OUTPUT
+          echo "DLL_URL=$($release.assets | where name -eq "hachimi.dll" | select browser_download_url | %{$_.browser_download_url})" >> $Env:GITHUB_OUTPUT
 
       - name: Fetch local release version
         id: local-release
-        run: echo "LOCAL_RELEASE=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+        run: echo "LOCAL_RELEASE=$(git describe --tags --abbrev=0)" >> $Env:GITHUB_OUTPUT
 
       - name: Checkout latest extension release
         id: checkout-new
         # if: ${{ steps.local-release.outputs.LOCAL_RELEASE != steps.remote-release.outputs.REMOTE_RELEASE }}
-        env:
-          DLL_URL: ${{ steps.local-release.outputs.DLL_URL }}
-        run: iwr -usebasicparsing -outfile hachimi.dll -uri $DLL_URL
+        run: iwr -usebasicparsing -outfile hachimi.dll -uri ${{ steps.local-release.outputs.DLL_URL }}
 
       - name: Checkout Lead's FunnyHoney
         run: iwr -usebasicparsing -outfile FunnyHoney.exe -uri ${{ secrets.FUNNYHONEY_URL }}
