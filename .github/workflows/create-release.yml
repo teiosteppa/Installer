@@ -1,0 +1,71 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      relver:
+        description: "Release version"
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    if: "!contains(github.event.head_commit.message, '[ci skip]')"
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Fetch latest release version
+        id: remote-release
+        run: |
+          $release = irm -uri "https://api.github.com/repos/kairusds/Hachimi-Edge/releases/latest" -method GET
+          echo "::set-output name=REMOTE_RELEASE::$($release.tag_name)"
+
+      - name: Fetch local release version
+        id: local-release
+        working-directory: ./extensions/wal2json
+        run: echo "::set-output name=LOCAL_RELEASE::$(git describe --tags --abbrev=0)"
+
+      - name: Build Installer
+        run: |
+          cargo build --target x86_64-pc-windows-msvc --target-dir build --release --features compress_dll
+          cd ..
+          move build\x86_64-pc-windows-msvc\release\hachimi_installer.exe build
+
+      - name: Upload Windows binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            build/hachimi_installer.exe
+
+  create-release:
+    needs: [build-windows]
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[ci skip]')"
+    steps:
+      - name: Get latest release info from official
+        id: get_info
+        run: |
+          release_info=$(curl -sL "https://api.github.com/repos/Hachimi-Hachimi/Hachimi/releases/latest" | jq -r '{tag: .tag_name, url: .html_url}')
+          echo "latest_tag=$(echo $release_info | jq -r .tag)" >> $GITHUB_OUTPUT
+          echo "release_url=$(echo $release_info | jq -r .url)" >> $GITHUB_OUTPUT
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+
+      - name: Upload binaries to a release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            ${{ github.event.inputs.relver == '' && steps.get_info.outputs.release_url || '' }}
+          generate_release_notes: ${{ github.event.inputs.relver != '' && true || false }}
+          files: |
+            artifacts/android/*
+            artifacts/windows/*
+          tag_name: ${{ github.event.inputs.relver || steps.get_info.outputs.latest_tag }}
