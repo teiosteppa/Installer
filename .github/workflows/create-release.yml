@@ -28,14 +28,9 @@ jobs:
           -manifest-only -app 3564400 -depot 3564401 -dir . && \
           EXE_SHA1=$(awk '$0 ~ /\sUmamusumePrettyDerby_Jpn\.exe$/ { print $3 }' manifest_*.txt)
           echo "UMPD_CHECKSUM=$EXE_SHA1" >> $GITHUB_OUTPUT
-      - name: Debug
-        env:
-          UMPD_CHECKSUM: ${{ steps.sha1sum.outputs.UMPD_CHECKSUM }}
-        run: echo "$UMPD_CHECKSUM"
 
   build-windows:
     runs-on: windows-latest
-    needs: fetch-checksum
     if: "!contains(github.event.head_commit.message, '[ci skip]')"
     steps:
       - uses: actions/checkout@v5
