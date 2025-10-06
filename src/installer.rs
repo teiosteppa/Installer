@@ -164,6 +164,8 @@ impl Installer {
         None
     }
 
+    // validate sha1sum before preinstall to ensure exe is supported
+    const CURRENT_EXE_SHA1 = include_str!("../UmamusumePrettyDerby_Jpn.exe.sha1sum");
     pub fn pre_install(&self) -> Result<(), Error> {
         if TargetType::from(self.target) == TargetType::PluginShim {
             //something exe idk
