@@ -1,4 +1,4 @@
-use std::{fs::File, io::Write, path::{Path, PathBuf}};
+﻿use std::{fs::File, io::Write, path::{Path, PathBuf}};
 
 use pelite::resources::version_info::Language;
 use registry::Hive;
@@ -293,7 +293,7 @@ impl Installer {
 
         let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
 
-        const EXPECTED_ORIGINAL_HASH: &str = "2173ea1e399a00b680ecfffc5b297ed1c29065f256a2f8b91ebcb66bc6315eb0";
+        const EXPECTED_ORIGINAL_HASH: &str = "47e89b30dcd44219c9d7eb4dca0a721c694f7887ebdb1905f92f1a54841a074b";
 
         match self.game_version {
             Some(GameVersion::DMM) => {},
