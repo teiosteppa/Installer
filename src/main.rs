@@ -6,7 +6,7 @@ mod utils;
 mod cli;
 mod gui;
 
-#[cfg(feature = "compress_dll")]
+#[cfg(feature = "compress_bin")]
 #[macro_use]
 extern crate include_bytes_zstd;
 

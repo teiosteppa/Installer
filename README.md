@@ -25,7 +25,7 @@ Put hachimi.dll in the root directory, build as any other rust application.
 
 - **MSRV:** v1.77
 - Features:
-    - `compress_dll`: Compress the dll using zstd and decompress it during installation.
+    - `compress_bin`: Compress the dll using zstd and decompress it during installation.
 
 # License
 [MIT](LICENSE)

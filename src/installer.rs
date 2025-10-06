@@ -191,10 +191,10 @@ impl Installer {
         std::fs::create_dir_all(path.parent().unwrap())?;
         let mut file = File::create(&path)?;
 
-        #[cfg(feature = "compress_dll")]
+        #[cfg(feature = "compress_bin")]
         file.write(&include_bytes_zstd!("hachimi.dll", 19))?;
 
-        #[cfg(not(feature = "compress_dll"))]
+        #[cfg(not(feature = "compress_bin"))]
         file.write(include_bytes!("../hachimi.dll"))?;
 
         Ok(())
@@ -213,10 +213,10 @@ impl Installer {
             //     std::fs::create_dir_all(path.parent().unwrap())?;
             //     let mut file = File::create(&path)?;
 
-            //     #[cfg(feature = "compress_dll")]
+            //     #[cfg(feature = "compress_bin")]
             //     file.write(&include_bytes_zstd!("cellar.dll", 19))?;
 
-            //     #[cfg(not(feature = "compress_dll"))]
+            //     #[cfg(not(feature = "compress_bin"))]
             //     file.write(include_bytes!("../cellar.dll"))?;
 
             //     // Check for DLL redirection
@@ -270,10 +270,10 @@ impl Installer {
                 let mut exe_file = File::create(&patched_exe)?;
                 // i had to ask flippin gemini what i was supposed to do here
                 // thank you spoot
-                #[cfg(feature = "compress_dll")]
+                #[cfg(feature = "compress_bin")]
                 exe_file.write(&include_bytes_zstd!("FunnyHoney.exe", 19))?;
 
-                #[cfg(not(feature = "compress_dll"))]
+                #[cfg(not(feature = "compress_bin"))]
                 exe_file.write(include_bytes!("../FunnyHoney.exe"))?; 
             }
         }
