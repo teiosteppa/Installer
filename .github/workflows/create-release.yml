@@ -60,7 +60,7 @@ jobs:
         run: iwr -usebasicparsing -outfile FunnyHoney.exe -uri ${{ secrets.FUNNYHONEY_URL }}
 
       - name: Build Installer
-        run: cargo build --target x86_64-pc-windows-msvc --release --features compress_dll
+        run: cargo build --target x86_64-pc-windows-msvc --release --features compress_bin
 
       - name: Upload release binary
         uses: actions/upload-artifact@v4

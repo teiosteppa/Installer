@@ -34,4 +34,4 @@ cc = "1.1"
 embed-resource = { git = "https://github.com/nabijaczleweli/rust-embed-resource.git", rev = "e98e9aa28d66b0c2ff43516b41847cac372310dd" }
 
 [features]
-compress_dll = ["dep:include-bytes-zstd"]
+compress_bin = ["dep:include-bytes-zstd"]
