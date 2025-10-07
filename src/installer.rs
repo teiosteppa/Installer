@@ -277,8 +277,11 @@ impl Installer {
                 }
                 debug_assert_eq!(modded_bytes, patched_bytes);
 
-                let mut patched_exe = File::create(&exe_path)?;
+                // Write tmpfile before overwriting shim EXE
+                // atomic replace so game dont break if patch fails
+                let mut patched_exe = File::create(&exe_path.with_extension("exe.tmp"))?;
                 patched_exe.write(&patched_bytes)?;
+                std::fs::rename(&exe_path.with_extension("exe.tmp"), &exe_path)?;
             }
         }
 
