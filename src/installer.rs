@@ -1,4 +1,4 @@
-﻿use std::{fs::File, io::Write, path::{Path, PathBuf}};
+use std::{fs::File, io::Write, path::{Path, PathBuf}};
 
 use pelite::resources::version_info::Language;
 use registry::Hive;
@@ -310,10 +310,14 @@ impl Installer {
                 }
 
                 let original_exe_data = std::fs::read(&steam_exe_path)?;
-                let patch_data = include_bytes!("../umamusume.patch");
+                let compressed_patch_data = include_bytes!("../umamusume.patch.zst");
+                let mut patch_data = Vec::new();
+                let mut decoder = zstd::Decoder::new(&compressed_patch_data[..])?;
+                decoder.read_to_end(&mut patch_data)?;
+
                 let temp_exe_path = steam_exe_path.with_extension("exe.tmp");
                 
-                utils::apply_patch(&original_exe_data, patch_data, &temp_exe_path)
+                utils::apply_patch(&original_exe_data, &patch_data, &temp_exe_path)
                     .map_err(|e| Error::Generic(e.to_string().into()))?;
 
                 std::fs::remove_file(&steam_exe_path)?;

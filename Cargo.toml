@@ -16,6 +16,7 @@ sha2 = "0.10.9"
 self_update = "0.42.0"
 chrono = { version = "0.4", features = ["serde"] }
 steamlocate = "2.0.1"
+zstd = "0.13.3"
 
 [dependencies.windows]
 version = "0.58"
