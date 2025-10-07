@@ -2,15 +2,21 @@ use std::{fs::File, io::{Read, Write}, path::{Path, PathBuf}, };
 
 use pelite::resources::version_info::Language;
 // use registry::Hive;
-// use tinyjson::JsonValue;
+use tinyjson::JsonValue;
 // use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
-use windows::{Win32::{Foundation::HWND}};
+use windows::{Win32::{UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}}, Foundation::HWND}};
 use steamlocate::SteamDir;
 use bsdiff;
 use crate::utils::{self};
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum GameVersion {
+    DMM,
+    Steam
+}
 pub struct Installer {
     pub install_dir: Option<PathBuf>,
+    game_version: Option<GameVersion>,
     pub target: Target,
     pub custom_target: Option<String>,
     pub hwnd: Option<HWND>
@@ -19,7 +25,8 @@ pub struct Installer {
 impl Installer {
     pub fn custom(install_dir: Option<PathBuf>, target: Target, custom_target: Option<String>) -> Installer {
         Installer {
-            install_dir: install_dir.or_else(Self::detect_install_dir),
+            install_dir: None,
+            game_version: None,
             target,
             custom_target,
             hwnd: None
@@ -29,62 +36,71 @@ impl Installer {
     // todo: allow both dmm and steam to be installed with one exe
     // original detect_install_dir:
     //
-    // fn detect_dmm_install_dir() -> Option<PathBuf> {
-    //     let app_data_dir_wstr = unsafe { SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_DEFAULT, None).ok()? };
-    //     let app_data_dir_str = unsafe { app_data_dir_wstr.to_string().ok()? };
-    //     let app_data_dir = Path::new(&app_data_dir_str);
-    //     let mut dmm_config_path = app_data_dir.join("dmmgameplayer5");
-    //     dmm_config_path.push("dmmgame.cnf");
+    fn detect_dmm_install_dir() -> Option<PathBuf> {
+        let app_data_dir_wstr = unsafe { SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_DEFAULT, None).ok()? };
+        let app_data_dir_str = unsafe { app_data_dir_wstr.to_string().ok()? };
+        let app_data_dir = Path::new(&app_data_dir_str);
+        let mut dmm_config_path = app_data_dir.join("dmmgameplayer5");
+        dmm_config_path.push("dmmgame.cnf");
 
-    //     let config_str = std::fs::read_to_string(dmm_config_path).ok()?;
-    //     let JsonValue::Object(config) = config_str.parse().ok()? else {
-    //         return None;
-    //     };
-    //     let JsonValue::Array(config_contents) = &config["contents"] else {
-    //         return None;
-    //     };
-    //     for value in config_contents {
-    //         let JsonValue::Object(game) = value else {
-    //             return None;
-    //         };
+        let config_str = std::fs::read_to_string(dmm_config_path).ok()?;
+        let JsonValue::Object(config) = config_str.parse().ok()? else {
+            return None;
+        };
+        let JsonValue::Array(config_contents) = &config["contents"] else {
+            return None;
+        };
+        for value in config_contents {
+            let JsonValue::Object(game) = value else {
+                return None;
+            };
 
-    //         let JsonValue::String(product_id) = &game["productId"] else {
-    //             continue;
-    //         };
-    //         if product_id != "umamusume" {
-    //             continue;
-    //         }
+            let JsonValue::String(product_id) = &game["productId"] else {
+                continue;
+            };
+            if product_id != "umamusume" {
+                continue;
+            }
 
-    //         let JsonValue::Object(detail) = &game["detail"] else {
-    //             return None;
-    //         };
-    //         let JsonValue::String(path_str) = &detail["path"] else {
-    //             return None;
-    //         };
+            let JsonValue::Object(detail) = &game["detail"] else {
+                return None;
+            };
+            let JsonValue::String(path_str) = &detail["path"] else {
+                return None;
+            };
 
-    //         let path = PathBuf::from(path_str);
-    //         return if path.is_dir() {
-    //             Some(path)
-    //         }
-    //         else {
-    //             None
-    //         }
-    //     }
+            let path = PathBuf::from(path_str);
+            return if path.is_dir() {
+                Some(path)
+            }
+            else {
+                None
+            }
+        }
 
-    //     None
-    // }
+        None
+    }
+
+    pub fn set_game_version(&mut self, version: GameVersion) {
+        self.game_version = Some(version);
+        match version {
+            GameVersion::DMM => self.install_dir = self.dmm_install_dir.clone(),
+            GameVersion::Steam => self.install_dir = self.steam_install_dir.clone(),
+        }
+    }
 
     fn detect_steam_install_dir() -> Option<PathBuf> {
+        const UMA_APP_ID: u32 = 3564400;
         let steam_dir = SteamDir::locate().ok()?;
         let (uma_musume_steamapp, _lib) = steam_dir
-            .find_app(3564400)
+            .find_app(UMA_APP_ID)
             .ok()??;
         let game_path = _lib.resolve_app_dir(&uma_musume_steamapp);
         if game_path.is_dir() { return Some(game_path) };
         None
     }
 
-    fn detect_install_dir() -> Option<PathBuf> {
+    pub fn detect_install_dir() -> Option<PathBuf> {
         // lazy since this is a fork, just check for steam first & fallback to DMM (unimplemented)
         if let Some(path) = Self::detect_steam_install_dir() {
             return Some(path);
@@ -325,6 +341,7 @@ impl Default for Installer {
     fn default() -> Installer {
         Installer {
             install_dir: Self::detect_install_dir(),
+            game_version: Self::set_game_version(&mut self, version),
             target: Target::default(),
             custom_target: None,
             hwnd: None
@@ -399,7 +416,6 @@ pub enum Error {
     NoInstallDir,
     IoError(std::io::Error),
     RegistryValueError(registry::value::Error),
-    // BackupNotFound
 }
 
 impl std::fmt::Display for Error {
@@ -408,7 +424,6 @@ impl std::fmt::Display for Error {
             Error::NoInstallDir => write!(f, "No install location specified"),
             Error::IoError(e) => write!(f, "I/O error: {}", e),
             Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e),
-            // Error::BackupNotFound => write!(f, "Failed to restore backup. Validate game integrity in Steam before launching.")
         }
     }
 }
