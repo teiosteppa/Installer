@@ -1,4 +1,4 @@
-use std::{fs::File, io::{Read, Write}, path::{Path, PathBuf}, };
+use std::{fs::File, io::Write, path::{Path, PathBuf}, };
 
 use pelite::resources::version_info::Language;
 // use registry::Hive;
@@ -305,7 +305,7 @@ impl Installer {
                 if backup_exe.exists() {
                     std::fs::rename(&backup_exe, &orig_exe)?;
                 } else {
-                    Err((), Error::FailedToRestore);
+                    return Err(Error::FailedToRestore);
                 }
             }
         }
