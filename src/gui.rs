@@ -1,6 +1,8 @@
 use crate::{installer::{self, Installer}, resource::*, utils};
 #[cfg(feature = "net_install")]
 use std::thread;
+#[cfg(feature = "net_install")]
+use tinyjson::JsonValue;
 use windows::{core::{w, HSTRING}, Win32::{
     Foundation::{HWND, LPARAM, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
@@ -13,9 +15,46 @@ use windows::{core::{w, HSTRING}, Win32::{
         MB_OK, MB_OKCANCEL, MB_YESNO, MSG, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_INITDIALOG, WM_SETICON
     }}
 }};
+#[cfg(feature = "net_install")]
+use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 
 pub fn run() -> Result<(), windows::core::Error> {
     let mut installer = Box::new(Installer::default());
+
+    #[cfg(feature = "net_install")]
+    {
+        // fetch version synchronously before creating the GUI
+        let client = reqwest::blocking::Client::builder()
+            .user_agent("hachimi-installer")
+            .build()
+            .unwrap();
+
+        let get_version = || -> Result<String, Box<dyn std::error::Error>> {
+            let resp_text = client.get("https://api.github.com/repos/kairusds/Hachimi-Edge/releases/latest").send()?.text()?;
+            let json: JsonValue = resp_text.parse()?;
+
+            // stole from lead
+            let JsonValue::Object(root_obj) = json else {
+                return Err("GitHub API response was not a JSON object".into());
+            };
+
+            let JsonValue::String(tag_name) = &root_obj["tag_name"] else {
+                return Err("tag_name field not found or not a string in API response".into());
+            };
+
+            Ok(tag_name.clone())
+        };
+
+        match get_version() {
+            Ok(version) => {
+                *installer.hachimi_version.lock().unwrap() = Some(version);
+            }
+            Err(_) => {
+                unsafe { MessageBoxW(None, w!("Unable to get Hachimi version from GitHub. Are you online?"), w!("Error"), MB_ICONERROR | MB_OK) };
+                return Ok(());
+            }
+        }
+    }
 
     #[cfg(feature = "net_install")]
     {
@@ -32,7 +71,14 @@ pub fn run() -> Result<(), windows::core::Error> {
     }?;
     utils::center_window(dialog)?;
     unsafe { _ = ShowWindow(dialog, SW_SHOW) };
-    installer.hwnd = Some(dialog);
+    #[cfg(not(feature = "net_install"))]
+    {
+        installer.hwnd = Some(dialog);
+    }
+    #[cfg(feature = "net_install")]
+    {
+        *installer.hwnd.lock().unwrap() = Some(dialog);
+    }
 
     let mut message = MSG::default();
     unsafe {
@@ -99,11 +145,23 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             }
 
             // Set packaged version
-            let packaged_ver_static = GetDlgItem(dialog, IDC_PACKAGED_VER).unwrap();
-            _ = SetWindowTextW(
-                packaged_ver_static,
-                &HSTRING::from(format!("Available version: {}", env!("HACHIMI_VERSION")))
-            );
+            #[cfg(not(feature = "net_install"))]
+            {
+                let packaged_ver_static = GetDlgItem(dialog, IDC_PACKAGED_VER).unwrap();
+                _ = SetWindowTextW(
+                    packaged_ver_static,
+                    &HSTRING::from(format!("Available version: {}", env!("HACHIMI_VERSION")))
+                );
+            }
+            #[cfg(feature = "net_install")]
+            {
+                let version_str = installer.hachimi_version.lock().unwrap()
+                    .as_deref()
+                    .unwrap_or("Error")
+                    .to_string();
+                let packaged_ver_static = GetDlgItem(dialog, IDC_PACKAGED_VER).unwrap();
+                _ = SetWindowTextW(packaged_ver_static, &HSTRING::from(format!("Available version: {}", version_str)));
+            }
 
             // Init targets
             let target_combo = GetDlgItem(dialog, IDC_TARGET).unwrap();
@@ -244,6 +302,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                         if let Err(e) = installer.uninstall() {
                             MessageBoxW(dialog, &HSTRING::from(e.to_string()), w!("Error"), MB_ICONERROR | MB_OK);
                             // fall through but clarify danger
+                            // only interrupt if error is not FailedToRestore
                             if !matches!(e, installer::Error::FailedToRestore) { return 0 };
                         }
                         update_target(dialog, GetDlgItem(dialog, IDC_TARGET).unwrap(), installer.target as _);
