@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
-use self_update::cargo_crate_version;
 use std::env;
-use std::fs;
+use std::fs::{self, File};
+use reqwest::header::ACCEPT;
+use tempfile::Builder;
 
 #[derive(Debug)]
 pub enum UpdateStatus {
@@ -53,9 +54,10 @@ pub fn run_update_check() -> UpdateStatus {
         None => return UpdateStatus::Failed(format!("No release with tag '{}' found.", RELEASE_TAG)),
     };
 
-    if !nightly_release.assets.iter().any(|a| a.name == bin_name) {
-        return UpdateStatus::Failed(format!("No asset named '{}' found in the '{}' release.", bin_name, RELEASE_TAG));
-    }
+    let asset = match nightly_release.assets.iter().find(|a| a.name == bin_name) {
+        Some(asset) => asset,
+        None => return UpdateStatus::Failed(format!("No asset named '{}' found in the '{}' release.", bin_name, RELEASE_TAG)),
+    };
 
     if nightly_release.date.is_empty() {
         return UpdateStatus::Failed("Nightly release is missing a publication date.".to_string());
@@ -68,17 +70,28 @@ pub fn run_update_check() -> UpdateStatus {
 
     if remote_published_at > local_modified_time {
         println!("Newer nightly build found. Updating...");
-        match self_update::backends::github::Update::configure()
-            .repo_owner(repo_owner)
-            .repo_name(repo_name)
-            .bin_name(bin_name)
-            .current_version(cargo_crate_version!())
-            .target_version_tag(RELEASE_TAG)
-            .build()
-            .and_then(|updater| updater.update())
-        {
+
+        let tmp_dir = match Builder::new().prefix("self_update").tempdir_in(env::current_dir().unwrap()) {
+            Ok(dir) => dir,
+            Err(e) => return UpdateStatus::Failed(format!("Failed to create temp dir: {}", e)),
+        };
+        let new_exe_path = tmp_dir.path().join(&asset.name);
+        let new_exe_file = match File::create(&new_exe_path) {
+            Ok(file) => file,
+            Err(e) => return UpdateStatus::Failed(format!("Failed to create temp file: {}", e)),
+        };
+        
+        match self_update::Download::from_url(&asset.download_url)
+            .set_header(ACCEPT, "application/octet-stream".parse().unwrap()) // Add this line
+            .show_progress(true)
+            .download_to(new_exe_file) {
+                Ok(_) => (),
+                Err(e) => return UpdateStatus::Failed(format!("Failed to download new release: {}", e)),
+        }
+
+        match self_update::self_replace::self_replace(&new_exe_path) {
             Ok(_) => UpdateStatus::Updated(remote_published_at.to_rfc2822()),
-            Err(e) => UpdateStatus::Failed(format!("Update failed during download/install: {}", e)),
+            Err(e) => UpdateStatus::Failed(format!("Update failed during install: {}", e)),
         }
     } else {
         UpdateStatus::NotNeeded

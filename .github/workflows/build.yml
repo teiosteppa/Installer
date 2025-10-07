@@ -63,7 +63,7 @@ jobs:
       - name: Build Installer executable
         run: cargo build --release --features compress_dll
         env:
-          CARGO_PKG_REPOSITORY: ${{ github.repository }}
+          INSTALLER_REPO_URL: ${{ github.repository }}
 
       - name: Upload Artifact for inspection
         uses: actions/upload-artifact@v4

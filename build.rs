@@ -43,7 +43,9 @@ fn compile_resources() {
 }
 
 fn set_repository_info() {
-    let repo_url = env::var("CARGO_PKG_REPOSITORY").unwrap_or_default();
+    let repo_url = std::env::var("INSTALLER_REPO_URL")
+        .or_else(|_| std::env::var("CARGO_PKG_REPOSITORY"))
+        .unwrap_or_default();
 
     if repo_url.starts_with("https://github.com/") {
         let parts: Vec<&str> = repo_url.trim_end_matches(".git").split('/').collect();
@@ -55,6 +57,9 @@ fn set_repository_info() {
 }
 
 fn main() {
+    println!("cargo:rerun-if-changed=Cargo.toml");
+    println!("cargo:rerun-if-env-changed=INSTALLER_REPO_URL");
+
     detect_hachimi_version();
     compile_resources();
     set_repository_info();
