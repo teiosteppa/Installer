@@ -6,7 +6,7 @@ use pelite::resources::version_info::Language;
 // use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
 use windows::{Win32::{Foundation::HWND}};
 use steamlocate::SteamDir;
-use bsdiff::{diff, patch};
+use bsdiff;
 use crate::utils::{self};
 
 pub struct Installer {
@@ -262,16 +262,15 @@ impl Installer {
             TargetType::PluginShim => {
                 let exe_path = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
 
-                #[cfg(feature = "compress_bin")]
-                let new_exe = &include_bytes_zstd!("FunnyHoney.exe", 19)?;
-                #[cfg(not(feature = "compress_bin"))]
-                let new_exe = include_bytes!("../FunnyHoney.exe")?; 
-
                 let exe_file = std::fs::read(&exe_path)?;
                 let mut patch = Vec::new();
 
-                bsdiff::diff(&exe_file, &new_exe, &mut patch)?;
-                std::fs::write(&exe_path, &patch);
+                #[cfg(feature = "compress_bin")]
+                bsdiff::diff(&exe_file, &include_bytes_zstd!("FunnyHoney.exe", 19), &mut patch)?;
+                #[cfg(not(feature = "compress_bin"))]
+                bsdiff::diff(&exe_file, include_bytes!("../FunnyHoney.exe"), &mut patch)?;
+
+                std::fs::write(&exe_path, &patch)?;
             }
         }
 
