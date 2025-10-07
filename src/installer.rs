@@ -100,7 +100,7 @@ impl Installer {
     fn get_target_path_internal(&self, target: Target, p: impl AsRef<Path>) -> Option<PathBuf> {
         Some(match TargetType::from(target) {
             // TargetType::DotLocal => self.install_dir.as_ref()?.join("UmamusumePrettyDerby_Jpn.exe.local").join(p),
-            TargetType::PluginShim => self.install_dir.as_ref()?.join(p)
+            TargetType::Direct => self.install_dir.as_ref()?.join(p)
         })
     }
 
@@ -166,7 +166,7 @@ impl Installer {
     }
 
     pub fn pre_install(&self) -> Result<(), Error> {
-        if TargetType::from(self.target) == TargetType::PluginShim {
+        if TargetType::from(self.target) == TargetType::Direct {
             //something exe idk
             let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
             let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
@@ -259,7 +259,7 @@ impl Installer {
             //         }
             //     }
             // },
-            TargetType::PluginShim => {
+            TargetType::Direct => {
                 let exe_path = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
 
                 // just use stdlib here cuz binary is so small
@@ -299,7 +299,7 @@ impl Installer {
             //     // Only remove if its empty
             //     _ = std::fs::remove_dir(parent);
             // },
-            TargetType::PluginShim => {
+            TargetType::Direct => {
                 let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
                 let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
                 if backup_exe.exists() {
@@ -362,14 +362,14 @@ impl Default for Target {
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum TargetType {
     // DotLocal,
-    PluginShim
+    Direct
 }
 
 impl From<Target> for TargetType {
     fn from(value: Target) -> Self {
         match value {
             // Target::UnityPlayer => Self::DotLocal,
-            Target::CriManaVpx => Self::PluginShim,
+            Target::CriManaVpx => Self::Direct,
         }
     }
 }
