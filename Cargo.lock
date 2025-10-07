@@ -338,6 +338,7 @@ name = "hachimi_installer"
 version = "3.1.0"
 dependencies = [
  "bsdiff",
+ "bytes",
  "cc",
  "embed-resource",
  "include-bytes-zstd",

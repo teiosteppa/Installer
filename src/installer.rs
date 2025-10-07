@@ -1,19 +1,27 @@
-use std::{fs::File, io::Write, path::{Path, PathBuf}, };
-
+use std::{fs::File, io::Write, path::{Path, PathBuf}};
+#[cfg(feature = "net_install")]
+use std::sync::{Arc, Mutex};
 use pelite::resources::version_info::Language;
 // use registry::Hive;
 // use tinyjson::JsonValue;
 // use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
 use windows::{Win32::{Foundation::HWND}};
+#[cfg(feature = "net_install")]
+use bytes::Bytes;
 use steamlocate::SteamDir;
 use bsdiff;
 use crate::utils::{self};
+
+#[cfg(feature = "net_install")]
+type DownloadResult = Result<Bytes, reqwest::Error>;
 
 pub struct Installer {
     pub install_dir: Option<PathBuf>,
     pub target: Target,
     pub custom_target: Option<String>,
-    pub hwnd: Option<HWND>
+    pub hwnd: Option<HWND>,
+    #[cfg(feature = "net_install")]
+    pub hachimi_dll: Arc<Mutex<Option<DownloadResult>>>
 }
 
 impl Installer {
@@ -22,7 +30,9 @@ impl Installer {
             install_dir: install_dir.or_else(Self::detect_install_dir),
             target,
             custom_target,
-            hwnd: None
+            hwnd: None,
+            #[cfg(feature = "net_install")]
+            hachimi_dll: Arc::new(Mutex::new(None))
         }
     }
 
@@ -183,16 +193,40 @@ impl Installer {
     pub fn install(&self) -> Result<(), Error> {
         let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
 
-        // rust is stupid lmao
+        let mod_dll: Vec<u8>;
+
         #[cfg(feature = "net_install")]
-        let mod_dll: &[u8] = &*reqwest::blocking::get("https://github.com/kairusds/Hachimi-Edge/releases/latest/download/hachimi.dll").unwrap().bytes().unwrap();
+        {
+            // The download is started in the background. Here we wait for it to complete.
+            // A simple approach is to just lock and check.
+            // For a better UX, you could show a progress indicator and not block the install button until download is ready.
+            // This implementation will still block if the download isn't finished.
+            // We use `take()` to move the value out of the Option, leaving None in its place.
+            // This avoids the need to clone the `reqwest::Error`, which doesn't implement `Clone`.
+            let guard = self.hachimi_dll.lock().unwrap();
+            match guard.as_ref() {
+                Some(Ok(bytes)) => {
+                    // `Bytes` is cheap to clone (atomic reference count).
+                    mod_dll = bytes.clone().into();
+                }
+                Some(Err(_)) => {
+                    // The error can't be cloned. We return a generic error.
+                    // A more robust solution could involve storing a cloneable error type.
+                    return Err(Error::DownloadFailed);
+                }
+                None => {
+                    return Err(Error::DownloadNotStarted);
+                }
+            }
+        }
         #[cfg(not(feature = "net_install"))]
-        let mod_dll = include_bytes!("../hachimi.dll");
+        {
+            mod_dll = include_bytes!("../hachimi.dll").to_vec();
+        }
 
         std::fs::create_dir_all(path.parent().unwrap())?;
         let mut file = File::create(&path)?;
-
-        file.write(mod_dll)?;
+        file.write_all(&mod_dll)?;
 
         Ok(())
     }
@@ -334,7 +368,9 @@ impl Default for Installer {
             install_dir: Self::detect_install_dir(),
             target: Target::default(),
             custom_target: None,
-            hwnd: None
+            hwnd: None,
+            #[cfg(feature = "net_install")]
+            hachimi_dll: Arc::new(Mutex::new(None))
         }
     }
 }
@@ -406,7 +442,13 @@ pub enum Error {
     NoInstallDir,
     IoError(std::io::Error),
     RegistryValueError(registry::value::Error),
-    FailedToRestore
+    FailedToRestore,
+    #[cfg(feature = "net_install")]
+    ReqwestError(reqwest::Error),
+    #[cfg(feature = "net_install")]
+    DownloadNotStarted,
+    #[cfg(feature = "net_install")]
+    DownloadFailed,
 }
 
 impl std::fmt::Display for Error {
@@ -415,7 +457,13 @@ impl std::fmt::Display for Error {
             Error::NoInstallDir => write!(f, "No install location specified"),
             Error::IoError(e) => write!(f, "I/O error: {}", e),
             Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e),
-            Error::FailedToRestore => write!(f, "Failed to restore backup. Validate game integrity in Steam before launching.")
+            Error::FailedToRestore => write!(f, "Failed to restore backup. Validate game integrity in Steam before launching."),
+            #[cfg(feature = "net_install")]
+            Error::ReqwestError(e) => write!(f, "Download error: {}", e),
+            #[cfg(feature = "net_install")]
+            Error::DownloadFailed => write!(f, "Download failed on a previous attempt. Please restart the installer."),
+            #[cfg(feature = "net_install")]
+            Error::DownloadNotStarted => write!(f, "Download has not started."),
         }
     }
 }
@@ -429,5 +477,12 @@ impl From<std::io::Error> for Error {
 impl From<registry::value::Error> for Error {
     fn from(e: registry::value::Error) -> Self {
         Error::RegistryValueError(e)
+    }
+}
+
+#[cfg(feature = "net_install")]
+impl From<reqwest::Error> for Error {
+    fn from(e: reqwest::Error) -> Self {
+        Error::ReqwestError(e)
     }
 }
