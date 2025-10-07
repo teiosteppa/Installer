@@ -1,4 +1,6 @@
 use crate::{installer::{self, Installer}, resource::*, utils};
+#[cfg(feature = "net_install")]
+use std::thread;
 use windows::{core::{w, HSTRING}, Win32::{
     Foundation::{HWND, LPARAM, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
@@ -15,6 +17,15 @@ use windows::{core::{w, HSTRING}, Win32::{
 pub fn run() -> Result<(), windows::core::Error> {
     let mut installer = Box::new(Installer::default());
 
+    #[cfg(feature = "net_install")]
+    {
+        let dll_handle = installer.hachimi_dll.clone();
+        thread::spawn(move || {
+            let result = reqwest::blocking::get("https://github.com/kairusds/Hachimi-Edge/releases/latest/download/hachimi.dll")
+                .and_then(|resp| resp.bytes());
+            *dll_handle.lock().unwrap() = Some(result);
+        });
+    }
     let instance = unsafe { GetModuleHandleW(None)? };
     let dialog = unsafe {
         CreateDialogParamW(instance, IDD_MAIN, None, Some(dlg_proc), LPARAM(installer.as_mut() as *mut _ as _))
@@ -91,7 +102,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             let packaged_ver_static = GetDlgItem(dialog, IDC_PACKAGED_VER).unwrap();
             _ = SetWindowTextW(
                 packaged_ver_static,
-                &HSTRING::from(format!("Packaged version: {}", env!("HACHIMI_VERSION")))
+                &HSTRING::from(format!("Available version: {}", env!("HACHIMI_VERSION")))
             );
 
             // Init targets
