@@ -232,7 +232,8 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                         let version_info_opt = installer.get_target_version_info(installer.target);
                         if let Err(e) = installer.uninstall() {
                             MessageBoxW(dialog, &HSTRING::from(e.to_string()), w!("Error"), MB_ICONERROR | MB_OK);
-                            return 0;
+                            // fall through but clarify danger
+                            if !matches!(e, installer::Error::FailedToRestore) { return 0 };
                         }
                         update_target(dialog, GetDlgItem(dialog, IDC_TARGET).unwrap(), installer.target as _);
 
