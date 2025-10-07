@@ -304,6 +304,8 @@ impl Installer {
                 let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
                 if backup_exe.exists() {
                     std::fs::rename(&backup_exe, &orig_exe)?;
+                } else {
+                    Err((), Error::FailedToRestore);
                 }
             }
         }
@@ -398,7 +400,7 @@ pub enum Error {
     NoInstallDir,
     IoError(std::io::Error),
     RegistryValueError(registry::value::Error),
-    // BackupNotFound
+    FailedToRestore
 }
 
 impl std::fmt::Display for Error {
@@ -407,7 +409,7 @@ impl std::fmt::Display for Error {
             Error::NoInstallDir => write!(f, "No install location specified"),
             Error::IoError(e) => write!(f, "I/O error: {}", e),
             Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e),
-            // Error::BackupNotFound => write!(f, "Failed to restore backup. Validate game integrity in Steam before launching.")
+            Error::FailedToRestore => write!(f, "Failed to restore backup. Validate game integrity in Steam before launching.")
         }
     }
 }
