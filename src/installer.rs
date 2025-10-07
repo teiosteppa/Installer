@@ -182,14 +182,17 @@ impl Installer {
 
     pub fn install(&self) -> Result<(), Error> {
         let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
+
+        // rust is stupid lmao
+        #[cfg(feature = "net_install")]
+        let mod_dll: &[u8] = &*reqwest::blocking::get("https://github.com/kairusds/Hachimi-Edge/releases/latest/download/hachimi.dll").unwrap().bytes().unwrap();
+        #[cfg(not(feature = "net_install"))]
+        let mod_dll = include_bytes!("../hachimi.dll");
+
         std::fs::create_dir_all(path.parent().unwrap())?;
         let mut file = File::create(&path)?;
 
-        #[cfg(feature = "compress_bin")]
-        file.write(&include_bytes_zstd!("hachimi.dll", 19))?;
-
-        #[cfg(not(feature = "compress_bin"))]
-        file.write(include_bytes!("../hachimi.dll"))?;
+        file.write(mod_dll)?;
 
         Ok(())
     }
