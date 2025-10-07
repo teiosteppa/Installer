@@ -303,8 +303,7 @@ impl Installer {
                 let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
                 let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
                 if backup_exe.exists() {
-                    std::fs::copy(&backup_exe, &orig_exe)?;
-                    std::fs::remove_file(&backup_exe)?;
+                    std::fs::rename(&backup_exe, &orig_exe)?;
                 }
             }
         }
