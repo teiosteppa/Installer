@@ -198,8 +198,16 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             return 0;
                         }
                     }
-                    match installer.pre_install()
-                        .and_then(|_| installer.install())
+                    // failed pre install no longer catastrophic, just warn
+                    if installer.pre_install().is_err() {
+                        MessageBoxW(
+                            dialog,
+                            w!("Failed to back up game EXE, use caution when uninstalling."),
+                            w!("Warning"),
+                            MB_ICONWARNING | MB_OK
+                        );
+                    }
+                    match installer.install()
                         .and_then(|_| installer.post_install())
                     {
                         Ok(_) => {
