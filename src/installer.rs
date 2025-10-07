@@ -1,4 +1,4 @@
-use std::{fs::File, io::Write, path::{Path, PathBuf}};
+use std::{fs::File, io::{Write, Read}, path::{Path, PathBuf}};
 
 use pelite::resources::version_info::Language;
 use registry::Hive;
