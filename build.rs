@@ -42,6 +42,10 @@ fn compile_resources() {
 }
 
 fn main() {
-    detect_hachimi_version();
+    // only set HACHIMI_VERSION env at build time if net_install disabled
+    if std::env::var("CARGO_FEATURE_NET_INSTALL").is_err() {
+        detect_hachimi_version();
+    }
+
     compile_resources();
 }

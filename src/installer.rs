@@ -19,9 +19,14 @@ pub struct Installer {
     pub install_dir: Option<PathBuf>,
     pub target: Target,
     pub custom_target: Option<String>,
+    #[cfg(not(feature = "net_install"))]
     pub hwnd: Option<HWND>,
     #[cfg(feature = "net_install")]
-    pub hachimi_dll: Arc<Mutex<Option<DownloadResult>>>
+    pub hwnd: Arc<Mutex<Option<HWND>>>,
+    #[cfg(feature = "net_install")]
+    pub hachimi_dll: Arc<Mutex<Option<DownloadResult>>>,
+    #[cfg(feature = "net_install")]
+    pub hachimi_version: Arc<Mutex<Option<String>>>
 }
 
 impl Installer {
@@ -30,9 +35,15 @@ impl Installer {
             install_dir: install_dir.or_else(Self::detect_install_dir),
             target,
             custom_target,
+            #[cfg(not(feature = "net_install"))]
             hwnd: None,
+            // is this even necessary anymore idk lmfao
             #[cfg(feature = "net_install")]
-            hachimi_dll: Arc::new(Mutex::new(None))
+            hwnd: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "net_install")]
+            hachimi_dll: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "net_install")]
+            hachimi_version: Arc::new(Mutex::new(None))
         }
     }
 
@@ -372,9 +383,14 @@ impl Default for Installer {
             install_dir: Self::detect_install_dir(),
             target: Target::default(),
             custom_target: None,
+            #[cfg(not(feature = "net_install"))]
             hwnd: None,
             #[cfg(feature = "net_install")]
-            hachimi_dll: Arc::new(Mutex::new(None))
+            hwnd: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "net_install")]
+            hachimi_dll: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "net_install")]
+            hachimi_version: Arc::new(Mutex::new(None))
         }
     }
 }
