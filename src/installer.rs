@@ -6,6 +6,7 @@ use pelite::resources::version_info::Language;
 // use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
 use windows::{Win32::{Foundation::HWND}};
 use steamlocate::SteamDir;
+use bsdiff;
 use crate::utils::{self};
 
 pub struct Installer {
@@ -170,15 +171,10 @@ impl Installer {
             let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
             let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
 
-            // shim exe from game never changes, so we can hardcode this
-            if !backup_exe.exists() {
-                let _backup_exe = std::fs::copy(&orig_exe, &backup_exe);
-                assert!(_backup_exe.is_ok());
-            }
-            // edge case race condition (i think?), separate checks, only delete original if backup exists
             if backup_exe.exists() {
-                std::fs::remove_file(orig_exe)?;
+                std::fs::remove_file(&backup_exe)?;
             }
+            std::fs::copy(&orig_exe, &backup_exe)?;
         }
 
         Ok(())
@@ -264,15 +260,28 @@ impl Installer {
             //     }
             // },
             TargetType::PluginShim => {
-                let patched_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
-                let mut exe_file = File::create(&patched_exe)?;
-                // i had to ask flippin gemini what i was supposed to do here
-                // thank you spoot
-                #[cfg(feature = "compress_bin")]
-                exe_file.write(&include_bytes_zstd!("FunnyHoney.exe", 19))?;
+                let exe_path = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
 
+                // just use stdlib here cuz binary is so small
+                let exe_bytes = std::fs::read(&exe_path)?;
+                #[cfg(feature = "compress_bin")]
+                let modded_bytes: &[u8] = &include_bytes_zstd!("FunnyHoney.exe", 19);
                 #[cfg(not(feature = "compress_bin"))]
-                exe_file.write(include_bytes!("../FunnyHoney.exe"))?; 
+                let modded_bytes: &[u8] = include_bytes!("../FunnyHoney.exe");
+                let mut patch = Vec::new(); {
+                    bsdiff::diff(&exe_bytes, &modded_bytes, &mut patch)?;
+                }
+
+                let mut patched_bytes = Vec::with_capacity(modded_bytes.len()); {
+                    bsdiff::patch(&exe_bytes, &mut patch.as_slice(), &mut patched_bytes)?;
+                }
+                debug_assert_eq!(modded_bytes, patched_bytes);
+
+                // Write tmpfile before overwriting shim EXE
+                // atomic replace so game dont break if patch fails
+                let mut patched_exe = File::create(&exe_path.with_extension("exe.tmp"))?;
+                patched_exe.write(&patched_bytes)?;
+                std::fs::rename(&exe_path.with_extension("exe.tmp"), &exe_path)?;
             }
         }
 
@@ -297,8 +306,9 @@ impl Installer {
                 let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
                 let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
                 if backup_exe.exists() {
-                    std::fs::copy(&backup_exe, &orig_exe)?;
-                    std::fs::remove_file(&backup_exe)?;
+                    std::fs::rename(&backup_exe, &orig_exe)?;
+                } else {
+                    return Err(Error::FailedToRestore);
                 }
             }
         }
@@ -393,7 +403,7 @@ pub enum Error {
     NoInstallDir,
     IoError(std::io::Error),
     RegistryValueError(registry::value::Error),
-    // BackupNotFound
+    FailedToRestore
 }
 
 impl std::fmt::Display for Error {
@@ -402,7 +412,7 @@ impl std::fmt::Display for Error {
             Error::NoInstallDir => write!(f, "No install location specified"),
             Error::IoError(e) => write!(f, "I/O error: {}", e),
             Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e),
-            // Error::BackupNotFound => write!(f, "Failed to restore backup. Validate game integrity in Steam before launching.")
+            Error::FailedToRestore => write!(f, "Failed to restore backup. Validate game integrity in Steam before launching.")
         }
     }
 }
