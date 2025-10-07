@@ -1,4 +1,4 @@
-use std::{fs::File, io::Write, path::{Path, PathBuf}, };
+use std::{fs::File, io::{Read, Write}, path::{Path, PathBuf}, };
 
 use pelite::resources::version_info::Language;
 // use registry::Hive;
@@ -6,6 +6,7 @@ use pelite::resources::version_info::Language;
 // use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
 use windows::{Win32::{Foundation::HWND}};
 use steamlocate::SteamDir;
+use bsdiff::{diff, patch};
 use crate::utils::{self};
 
 pub struct Installer {
@@ -170,15 +171,10 @@ impl Installer {
             let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
             let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
 
-            // shim exe from game never changes, so we can hardcode this
-            if !backup_exe.exists() {
-                let _backup_exe = std::fs::copy(&orig_exe, &backup_exe);
-                assert!(_backup_exe.is_ok());
-            }
-            // edge case race condition (i think?), separate checks, only delete original if backup exists
             if backup_exe.exists() {
-                std::fs::remove_file(orig_exe)?;
+                std::fs::remove_file(&backup_exe)?;
             }
+            std::fs::copy(&orig_exe, &backup_exe)?;
         }
 
         Ok(())
@@ -264,15 +260,18 @@ impl Installer {
             //     }
             // },
             TargetType::PluginShim => {
-                let patched_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
-                let mut exe_file = File::create(&patched_exe)?;
-                // i had to ask flippin gemini what i was supposed to do here
-                // thank you spoot
-                #[cfg(feature = "compress_bin")]
-                exe_file.write(&include_bytes_zstd!("FunnyHoney.exe", 19))?;
+                let exe_path = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
 
+                #[cfg(feature = "compress_bin")]
+                let new_exe = &include_bytes_zstd!("FunnyHoney.exe", 19)?;
                 #[cfg(not(feature = "compress_bin"))]
-                exe_file.write(include_bytes!("../FunnyHoney.exe"))?; 
+                let new_exe = include_bytes!("../FunnyHoney.exe")?; 
+
+                let exe_file = std::fs::read(&exe_path)?;
+                let mut patch = Vec::new();
+
+                bsdiff::diff(&exe_file, &new_exe, &mut patch)?;
+                std::fs::write(&exe_path, &patch);
             }
         }
 
