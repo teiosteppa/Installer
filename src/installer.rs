@@ -262,15 +262,23 @@ impl Installer {
             TargetType::PluginShim => {
                 let exe_path = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
 
-                let exe_file = std::fs::read(&exe_path)?;
-                let mut patch = Vec::new();
-
+                // just use stdlib here cuz binary is so small
+                let exe_bytes = std::fs::read(&exe_path)?;
                 #[cfg(feature = "compress_bin")]
-                bsdiff::diff(&exe_file, &include_bytes_zstd!("FunnyHoney.exe", 19), &mut patch)?;
+                let modded_bytes: &[u8] = &include_bytes_zstd!("FunnyHoney.exe", 19);
                 #[cfg(not(feature = "compress_bin"))]
-                bsdiff::diff(&exe_file, include_bytes!("../FunnyHoney.exe"), &mut patch)?;
+                let modded_bytes: &[u8] = include_bytes!("../FunnyHoney.exe");
+                let mut patch = Vec::new(); {
+                    bsdiff::diff(&exe_bytes, &modded_bytes, &mut patch)?;
+                }
 
-                std::fs::write(&exe_path, &patch)?;
+                let mut patched_bytes = Vec::with_capacity(modded_bytes.len()); {
+                    bsdiff::patch(&exe_bytes, &mut patch.as_slice(), &mut patched_bytes)?;
+                }
+                debug_assert_eq!(modded_bytes, patched_bytes);
+
+                let mut patched_exe = File::create(&exe_path)?;
+                patched_exe.write(&patched_bytes)?;
             }
         }
 
