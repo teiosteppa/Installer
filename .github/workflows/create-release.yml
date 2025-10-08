@@ -12,22 +12,22 @@ permissions:
   contents: write
 
 jobs:
-  fetch-checksum:
-    runs-on: ubuntu-latest
-    outputs:
-      exe-sha1sum: ${{ steps.sha1sum.outputs.UMPD_CHECKSUM }}
-    steps:
-      - name: Checkout DepotDownloader binary
-        run: |
-          curl -fsSLO https://github.com/SteamRE/DepotDownloader/releases/latest/download/DepotDownloader-linux-x64.zip
-          unzip DepotDownloader-linux-x64.zip
-      - name: Fetch latest UMPD manifest
-        id: sha1sum
-        run: |
-          ./DepotDownloader -username ${{ secrets.STEAM_USER }} -password ${{ secrets.STEAM_PASS }} \
-          -manifest-only -app 3564400 -depot 3564401 -dir . && \
-          EXE_SHA1=$(awk '$0 ~ /\sUmamusumePrettyDerby_Jpn\.exe$/ { print $3 }' manifest_*.txt)
-          echo "UMPD_CHECKSUM=$EXE_SHA1" >> $GITHUB_OUTPUT
+  # fetch-checksum:
+  #   runs-on: ubuntu-latest
+  #   outputs:
+  #     exe-sha1sum: ${{ steps.sha1sum.outputs.UMPD_CHECKSUM }}
+  #   steps:
+  #     - name: Checkout DepotDownloader binary
+  #       run: |
+  #         curl -fsSLO https://github.com/SteamRE/DepotDownloader/releases/latest/download/DepotDownloader-linux-x64.zip
+  #         unzip DepotDownloader-linux-x64.zip
+  #     - name: Fetch latest UMPD manifest
+  #       id: sha1sum
+  #       run: |
+  #         ./DepotDownloader -username ${{ secrets.STEAM_USER }} -password ${{ secrets.STEAM_PASS }} \
+  #         -manifest-only -app 3564400 -depot 3564401 -dir . && \
+  #         EXE_SHA1=$(awk '$0 ~ /\sUmamusumePrettyDerby_Jpn\.exe$/ { print $3 }' manifest_*.txt)
+  #         echo "UMPD_CHECKSUM=$EXE_SHA1" >> $GITHUB_OUTPUT
 
   build-windows:
     runs-on: windows-latest
@@ -45,22 +45,24 @@ jobs:
           echo "REMOTE_RELEASE=$($release.tag_name)" >> $ENV:GITHUB_OUTPUT
           echo "DLL_URL=$($release.assets | where name -eq "hachimi.dll" | select browser_download_url | %{$_.browser_download_url})" >> $ENV:GITHUB_OUTPUT
 
-      - name: Fetch local release version
-        id: local-release
-        run: echo "LOCAL_RELEASE=$(git describe --tags --abbrev=0)" >> $ENV:GITHUB_OUTPUT
+      # - name: Fetch local release version
+      #   id: local-release
+      #   run: echo "LOCAL_RELEASE=$(git describe --tags --abbrev=0)" >> $ENV:GITHUB_OUTPUT
 
       - name: Checkout latest extension release
         id: checkout-new
-        if: ${{ (steps.local-release.outputs.LOCAL_RELEASE != steps.remote-release.outputs.REMOTE_RELEASE) || inputs.force == true }}
+        # if: ${{ (steps.local-release.outputs.LOCAL_RELEASE != steps.remote-release.outputs.REMOTE_RELEASE) || inputs.force == true }}
         env:
           DLL_URL: ${{ steps.remote-release.outputs.DLL_URL }}
         run: iwr -usebasicparsing -outfile hachimi.dll -uri $ENV:DLL_URL
 
-      - name: Checkout Lead's FunnyHoney
-        run: iwr -usebasicparsing -outfile FunnyHoney.exe -uri ${{ secrets.FUNNYHONEY_URL }}
+      - name: Checkout Lead's FunnyHoney & Cellar
+        run: |
+          iwr -usebasicparsing -outfile FunnyHoney.exe -uri ${{ secrets.FUNNYHONEY_URL }}
+          iwr -usebasicparsing -outfile cellar.dll -uri "https://github.com/hachimi-hachimi/Cellar/releases/latest/download/cellar.dll"
 
       - name: Build Installer
-        run: cargo build --target x86_64-pc-windows-msvc --release --features compress_bin
+        run: cargo build --target x86_64-pc-windows-msvc --release --features compress_bin --locked
 
       - name: Upload release binary
         uses: actions/upload-artifact@v4
