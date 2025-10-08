@@ -15,8 +15,6 @@ use windows::{core::{w, HSTRING}, Win32::{
         MB_OK, MB_OKCANCEL, MB_YESNO, MSG, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_INITDIALOG, WM_SETICON
     }}
 }};
-#[cfg(feature = "net_install")]
-use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 
 pub fn run() -> Result<(), windows::core::Error> {
     let mut installer = Box::new(Installer::default());
