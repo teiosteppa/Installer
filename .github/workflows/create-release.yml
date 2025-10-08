@@ -56,11 +56,13 @@ jobs:
           DLL_URL: ${{ steps.remote-release.outputs.DLL_URL }}
         run: iwr -usebasicparsing -outfile hachimi.dll -uri $ENV:DLL_URL
 
-      - name: Checkout Lead's FunnyHoney
-        run: iwr -usebasicparsing -outfile FunnyHoney.exe -uri ${{ secrets.FUNNYHONEY_URL }}
+      - name: Checkout Lead's FunnyHoney & Cellar
+        run: |
+          iwr -usebasicparsing -outfile FunnyHoney.exe -uri ${{ secrets.FUNNYHONEY_URL }}
+          iwr -usebasicparsing -outfile cellar.dll -uri "https://github.com/hachimi-hachimi/Cellar/releases/latest/download/cellar.dll"
 
       - name: Build Installer
-        run: cargo build --target x86_64-pc-windows-msvc --release --features compress_bin
+        run: cargo build --target x86_64-pc-windows-msvc --release --features compress_bin --locked
 
       - name: Upload release binary
         uses: actions/upload-artifact@v4
