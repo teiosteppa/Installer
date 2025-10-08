@@ -221,7 +221,11 @@ impl Installer {
                 }
             }
         }
-        #[cfg(not(feature = "net_install"))]
+        #[cfg(feature = "compress_bin")]
+        {
+            mod_dll = &include_bytes_zstd!("hachimi.dll", 19);
+        }
+        #[cfg(not(any(feature = "net_install", feature = "compress_bin")))]
         {
             mod_dll = include_bytes!("../hachimi.dll").to_vec();
         }
