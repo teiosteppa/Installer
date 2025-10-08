@@ -241,7 +241,7 @@ impl Installer {
                 // Install Cellar
                 let path = self.install_dir.as_ref()
                     .ok_or_else(|| Error::NoInstallDir)?
-                    .join("UmamusumePrettyDerby_Jpn.exe.local")
+                    .join("umamusume.exe.local")
                     .join("apphelp.dll");
                 std::fs::create_dir_all(path.parent().unwrap())?;
                 let mut file = File::create(&path)?;
@@ -268,7 +268,10 @@ impl Installer {
                         {
                             let res = unsafe {
                                 MessageBoxW(
+                                    #[cfg(not(feature = "net_install"))]
                                     self.hwnd.as_ref(),
+                                    #[cfg(feature = "net_install")]
+                                    self.hwnd.lock().unwrap().as_ref(),
                                     w!("DotLocal DLL redirection is not enabled. This is required for the specified install target.\n\
                                         Would you like to enable it?"),
                                     w!("Install"),
@@ -279,7 +282,10 @@ impl Installer {
                                 regkey.set_value("DevOverrideEnable", &registry::Data::U32(1))?;
                                 unsafe {
                                     MessageBoxW(
+                                        #[cfg(not(feature = "net_install"))]
                                         self.hwnd.as_ref(),
+                                        #[cfg(feature = "net_install")]
+                                        self.hwnd.lock().unwrap().as_ref(),
                                         w!("Restart your computer to apply the changes."),
                                         w!("DLL redirection enabled"),
                                         MB_ICONINFORMATION | MB_OK
@@ -290,7 +296,10 @@ impl Installer {
                     },
                     Err(e) => {
                         unsafe { MessageBoxW(
+                            #[cfg(not(feature = "net_install"))]
                             self.hwnd.as_ref(),
+                            #[cfg(feature = "net_install")]
+                            self.hwnd.lock().unwrap().as_ref(),
                             &HSTRING::from(format!("Failed to open IFEO registry key: {}", e)),
                             w!("Warning"),
                             MB_OK | MB_ICONWARNING
