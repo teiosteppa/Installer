@@ -140,11 +140,21 @@ impl Installer {
     }
 
     pub fn get_target_display_label(&self, target: Target) -> String {
+        let platform = match target {
+            Target::UnityPlayer => "DMM",
+            Target::CriManaVpx => "Steam",
+        };
+
         if let Some(version_info) = self.get_target_version_info(target) {
-            version_info.get_display_label(target)
+            if version_info.is_hachimi() {
+                let name = version_info.name.as_deref().unwrap_or("Hachimi");
+                format!("* {} ({}) ({})", platform, name, target.dll_name())
+            } else {
+                format!("{} ({})", platform, target.dll_name())
+            }
         }
         else {
-            target.dll_name().to_owned()
+            format!("{} ({})", platform, target.dll_name())
         }
     }
 
@@ -428,11 +438,6 @@ pub struct TargetVersionInfo {
 }
 
 impl TargetVersionInfo {
-    pub fn get_display_label(&self, target: Target) -> String {
-        let name = self.name.clone().unwrap_or_else(|| "Unknown".to_string());
-        format!("* {} ({})", target.dll_name(), name)
-    }
-
     pub fn is_hachimi(&self) -> bool {
         if let Some(name) = &self.name {
             return name == "Hachimi";

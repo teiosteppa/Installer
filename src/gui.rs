@@ -180,7 +180,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             update_target(dialog, target_combo, default_target_idx);
 
             if installed_count <= 1 {
-                EnableWindow(target_combo, false);
+                let _ = EnableWindow(target_combo, false);
             }
 
             // Show notice if install dir is not detected
