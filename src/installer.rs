@@ -1,5 +1,4 @@
 use std::{fs::File, io::Write, path::{Path, PathBuf}};
-#[cfg(feature = "net_install")]
 use std::sync::{Arc, Mutex};
 use pelite::resources::version_info::Language;
 use registry::Hive;
@@ -18,9 +17,6 @@ pub struct Installer {
     pub install_dir: Option<PathBuf>,
     pub target: Target,
     pub custom_target: Option<String>,
-    #[cfg(not(feature = "net_install"))]
-    pub hwnd: Option<HWND>,
-    #[cfg(feature = "net_install")]
     pub hwnd: Arc<Mutex<Option<HWND>>>,
     #[cfg(feature = "net_install")]
     pub hachimi_dll: Arc<Mutex<Option<DownloadResult>>>,
@@ -34,9 +30,6 @@ impl Installer {
             install_dir: install_dir.or_else(Self::detect_install_dir),
             target,
             custom_target,
-            #[cfg(not(feature = "net_install"))]
-            hwnd: None,
-            #[cfg(feature = "net_install")]
             hwnd: Arc::new(Mutex::new(None)),
             #[cfg(feature = "net_install")]
             hachimi_dll: Arc::new(Mutex::new(None)),
@@ -268,9 +261,6 @@ impl Installer {
                         {
                             let res = unsafe {
                                 MessageBoxW(
-                                    #[cfg(not(feature = "net_install"))]
-                                    self.hwnd.as_ref(),
-                                    #[cfg(feature = "net_install")]
                                     self.hwnd.lock().unwrap().as_ref(),
                                     w!("DotLocal DLL redirection is not enabled. This is required for the specified install target.\n\
                                         Would you like to enable it?"),
@@ -282,9 +272,6 @@ impl Installer {
                                 regkey.set_value("DevOverrideEnable", &registry::Data::U32(1))?;
                                 unsafe {
                                     MessageBoxW(
-                                        #[cfg(not(feature = "net_install"))]
-                                        self.hwnd.as_ref(),
-                                        #[cfg(feature = "net_install")]
                                         self.hwnd.lock().unwrap().as_ref(),
                                         w!("Restart your computer to apply the changes."),
                                         w!("DLL redirection enabled"),
@@ -296,9 +283,6 @@ impl Installer {
                     },
                     Err(e) => {
                         unsafe { MessageBoxW(
-                            #[cfg(not(feature = "net_install"))]
-                            self.hwnd.as_ref(),
-                            #[cfg(feature = "net_install")]
                             self.hwnd.lock().unwrap().as_ref(),
                             &HSTRING::from(format!("Failed to open IFEO registry key: {}", e)),
                             w!("Warning"),
@@ -379,9 +363,6 @@ impl Default for Installer {
             install_dir: Self::detect_install_dir(),
             target: Target::default(),
             custom_target: None,
-            #[cfg(not(feature = "net_install"))]
-            hwnd: None,
-            #[cfg(feature = "net_install")]
             hwnd: Arc::new(Mutex::new(None)),
             #[cfg(feature = "net_install")]
             hachimi_dll: Arc::new(Mutex::new(None)),
