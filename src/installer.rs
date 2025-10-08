@@ -299,6 +299,11 @@ impl Installer {
                 }
             },
             TargetType::Direct => {
+                // compatibility: delete dotlocal DLL redir if exists
+                if self.install_dir.as_ref().unwrap().join("UmamusumePrettyDerby_Jpn.exe.local").exists() {
+                    std::fs::remove_dir_all(self.install_dir.as_ref().unwrap().join("UmamusumePrettyDerby_Jpn.exe.local"))?;
+                }
+
                 let exe_path = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
 
                 // just use stdlib here cuz binary is so small
