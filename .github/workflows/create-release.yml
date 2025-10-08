@@ -12,22 +12,22 @@ permissions:
   contents: write
 
 jobs:
-  fetch-checksum:
-    runs-on: ubuntu-latest
-    outputs:
-      exe-sha1sum: ${{ steps.sha1sum.outputs.UMPD_CHECKSUM }}
-    steps:
-      - name: Checkout DepotDownloader binary
-        run: |
-          curl -fsSLO https://github.com/SteamRE/DepotDownloader/releases/latest/download/DepotDownloader-linux-x64.zip
-          unzip DepotDownloader-linux-x64.zip
-      - name: Fetch latest UMPD manifest
-        id: sha1sum
-        run: |
-          ./DepotDownloader -username ${{ secrets.STEAM_USER }} -password ${{ secrets.STEAM_PASS }} \
-          -manifest-only -app 3564400 -depot 3564401 -dir . && \
-          EXE_SHA1=$(awk '$0 ~ /\sUmamusumePrettyDerby_Jpn\.exe$/ { print $3 }' manifest_*.txt)
-          echo "UMPD_CHECKSUM=$EXE_SHA1" >> $GITHUB_OUTPUT
+  # fetch-checksum:
+  #   runs-on: ubuntu-latest
+  #   outputs:
+  #     exe-sha1sum: ${{ steps.sha1sum.outputs.UMPD_CHECKSUM }}
+  #   steps:
+  #     - name: Checkout DepotDownloader binary
+  #       run: |
+  #         curl -fsSLO https://github.com/SteamRE/DepotDownloader/releases/latest/download/DepotDownloader-linux-x64.zip
+  #         unzip DepotDownloader-linux-x64.zip
+  #     - name: Fetch latest UMPD manifest
+  #       id: sha1sum
+  #       run: |
+  #         ./DepotDownloader -username ${{ secrets.STEAM_USER }} -password ${{ secrets.STEAM_PASS }} \
+  #         -manifest-only -app 3564400 -depot 3564401 -dir . && \
+  #         EXE_SHA1=$(awk '$0 ~ /\sUmamusumePrettyDerby_Jpn\.exe$/ { print $3 }' manifest_*.txt)
+  #         echo "UMPD_CHECKSUM=$EXE_SHA1" >> $GITHUB_OUTPUT
 
   build-windows:
     runs-on: windows-latest
