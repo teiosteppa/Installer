@@ -223,7 +223,7 @@ impl Installer {
         }
         #[cfg(feature = "compress_bin")]
         {
-            mod_dll = &include_bytes_zstd!("hachimi.dll", 19);
+            mod_dll = include_bytes_zstd!("hachimi.dll", 19);
         }
         #[cfg(not(any(feature = "net_install", feature = "compress_bin")))]
         {
