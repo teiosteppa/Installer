@@ -69,14 +69,7 @@ pub fn run() -> Result<(), windows::core::Error> {
     }?;
     utils::center_window(dialog)?;
     unsafe { _ = ShowWindow(dialog, SW_SHOW) };
-    #[cfg(not(feature = "net_install"))]
-    {
-        installer.hwnd = Some(dialog);
-    }
-    #[cfg(feature = "net_install")]
-    {
-        *installer.hwnd.lock().unwrap() = Some(dialog);
-    }
+    *installer.hwnd.lock().unwrap() = Some(dialog);
 
     let mut message = MSG::default();
     unsafe {
