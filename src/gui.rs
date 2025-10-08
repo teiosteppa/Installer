@@ -89,6 +89,13 @@ fn get_installer(dialog: HWND) -> &'static mut Installer {
 fn update_target(dialog: HWND, target_combo: HWND, index: usize) {
     let installer = get_installer(dialog);
     let target = installer::Target::VALUES[index];
+
+    installer.install_dir = Installer::detect_install_dir(target);
+    if let Some(path) = &installer.install_dir {
+        let install_path_edit = unsafe { GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap() };
+        unsafe { let _ = SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap())); };
+    }
+
     let mut installed = false;
     let label = if let Some(version_info) = installer.get_target_version_info(target) {
         installed = true;
@@ -156,47 +163,31 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
 
             // Init targets
             let target_combo = GetDlgItem(dialog, IDC_TARGET).unwrap();
-            let mut default_target = 0;
-            let mut default_target_set = false;
-            let mut multiple_installs = false;
-            for (i, target) in installer::Target::VALUES.into_iter().enumerate() {
-                let label = if let Some(version_info) = installer.get_target_version_info(*target) {
-                    if version_info.is_hachimi() {
-                        if default_target_set {
-                            // Already set; multiple installations detected!
-                            multiple_installs = true;
-                        }
-                        default_target = i;
-                        default_target_set = true;
-                    }
-                    version_info.get_display_label(*target)
-                }
-                else {
-                    target.dll_name().to_owned()
-                };
+            let dmm_installed = installer::detect_dmm_install_dir().is_some();
+            let steam_installed = installer::detect_steam_install_dir().is_some();
+            let installed_count = [dmm_installed, steam_installed].iter().filter(|&&x| x).count();
+
+            for target in installer::Target::VALUES {
+                let label = installer.get_target_display_label(*target);
                 SendMessageW(
                     target_combo, CB_ADDSTRING, None, LPARAM(HSTRING::from(label).as_ptr() as _)
                 );
             }
-            // Defaults to already installed Hachimi dll, if any
-            update_target(dialog, target_combo, default_target);
+
+            let default_target_enum = installer::Target::default();
+            let default_target_idx = installer::Target::VALUES.iter().position(|&t| t == default_target_enum).unwrap_or(0);
+
+            update_target(dialog, target_combo, default_target_idx);
+
+            if installed_count <= 1 {
+                EnableWindow(target_combo, false);
+            }
 
             // Show notice if install dir is not detected
             if installer.install_dir.is_none() {
                 MessageBoxW(
                     dialog,
                     w!("Failed to detect the game's install location. Please select it manually."),
-                    w!("Warning"),
-                    MB_ICONWARNING | MB_OK
-                );
-            }
-
-            // Show notice for multiple installs
-            if multiple_installs {
-                MessageBoxW(
-                    dialog,
-                    w!("Multiple installations of Hachimi detected! \
-                        Please uninstall one of them, otherwise the game will not work correctly."),
                     w!("Warning"),
                     MB_ICONWARNING | MB_OK
                 );

@@ -24,10 +24,66 @@ pub struct Installer {
     pub hachimi_version: Arc<Mutex<Option<String>>>
 }
 
+
+pub fn detect_dmm_install_dir() -> Option<PathBuf> {
+    let app_data_dir_wstr = unsafe { SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_DEFAULT, None).ok()? };
+    let app_data_dir_str = unsafe { app_data_dir_wstr.to_string().ok()? };
+    let app_data_dir = Path::new(&app_data_dir_str);
+    let mut dmm_config_path = app_data_dir.join("dmmgameplayer5");
+    dmm_config_path.push("dmmgame.cnf");
+
+    let config_str = std::fs::read_to_string(dmm_config_path).ok()?;
+    let JsonValue::Object(config) = config_str.parse().ok()? else {
+        return None;
+    };
+    let JsonValue::Array(config_contents) = &config["contents"] else {
+        return None;
+    };
+    for value in config_contents {
+        let JsonValue::Object(game) = value else {
+            return None;
+        };
+
+        let JsonValue::String(product_id) = &game["productId"] else {
+            continue;
+        };
+        if product_id != "umamusume" {
+            continue;
+        }
+
+        let JsonValue::Object(detail) = &game["detail"] else {
+            return None;
+        };
+        let JsonValue::String(path_str) = &detail["path"] else {
+            return None;
+        };
+
+        let path = PathBuf::from(path_str);
+        return if path.is_dir() {
+            Some(path)
+        }
+        else {
+            None
+        }
+    }
+
+    None
+}
+
+pub fn detect_steam_install_dir() -> Option<PathBuf> {
+    let steam_dir = SteamDir::locate().ok()?;
+    let (uma_musume_steamapp, _lib) = steam_dir
+        .find_app(3564400)
+        .ok()??;
+    let game_path = _lib.resolve_app_dir(&uma_musume_steamapp);
+    if game_path.is_dir() { return Some(game_path) };
+    None
+}
+
 impl Installer {
     pub fn custom(install_dir: Option<PathBuf>, target: Target, custom_target: Option<String>) -> Installer {
         Installer {
-            install_dir: install_dir.or_else(Self::detect_install_dir),
+            install_dir: install_dir.or_else(|| Self::detect_install_dir(target)),
             target,
             custom_target,
             hwnd: Arc::new(Mutex::new(None)),
@@ -38,70 +94,11 @@ impl Installer {
         }
     }
 
-    fn detect_dmm_install_dir() -> Option<PathBuf> {
-        let app_data_dir_wstr = unsafe { SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_DEFAULT, None).ok()? };
-        let app_data_dir_str = unsafe { app_data_dir_wstr.to_string().ok()? };
-        let app_data_dir = Path::new(&app_data_dir_str);
-        let mut dmm_config_path = app_data_dir.join("dmmgameplayer5");
-        dmm_config_path.push("dmmgame.cnf");
-
-        let config_str = std::fs::read_to_string(dmm_config_path).ok()?;
-        let JsonValue::Object(config) = config_str.parse().ok()? else {
-            return None;
-        };
-        let JsonValue::Array(config_contents) = &config["contents"] else {
-            return None;
-        };
-        for value in config_contents {
-            let JsonValue::Object(game) = value else {
-                return None;
-            };
-
-            let JsonValue::String(product_id) = &game["productId"] else {
-                continue;
-            };
-            if product_id != "umamusume" {
-                continue;
-            }
-
-            let JsonValue::Object(detail) = &game["detail"] else {
-                return None;
-            };
-            let JsonValue::String(path_str) = &detail["path"] else {
-                return None;
-            };
-
-            let path = PathBuf::from(path_str);
-            return if path.is_dir() {
-                Some(path)
-            }
-            else {
-                None
-            }
+    pub fn detect_install_dir(target: Target) -> Option<PathBuf> {
+        match TargetType::from(target) {
+            TargetType::DotLocal => detect_dmm_install_dir(),
+            TargetType::Direct => detect_steam_install_dir(),
         }
-
-        None
-    }
-
-    fn detect_steam_install_dir() -> Option<PathBuf> {
-        let steam_dir = SteamDir::locate().ok()?;
-        let (uma_musume_steamapp, _lib) = steam_dir
-            .find_app(3564400)
-            .ok()??;
-        let game_path = _lib.resolve_app_dir(&uma_musume_steamapp);
-        if game_path.is_dir() { return Some(game_path) };
-        None
-    }
-
-    fn detect_install_dir() -> Option<PathBuf> {
-        if let Some(path) = Self::detect_steam_install_dir() {
-            return Some(path);
-        }
-        if let Some(path) = Self::detect_dmm_install_dir() {
-            return Some(path);
-        }
-
-        None
     }
 
     //something exe something something
@@ -359,8 +356,11 @@ impl Installer {
 
 impl Default for Installer {
     fn default() -> Installer {
+        let install_dir = Target::VALUES.iter()
+            .find_map(|t| Self::detect_install_dir(*t));
+
         Installer {
-            install_dir: Self::detect_install_dir(),
+            install_dir,
             target: Target::default(),
             custom_target: None,
             hwnd: Arc::new(Mutex::new(None)),
@@ -393,9 +393,16 @@ impl Target {
 }
 
 impl Default for Target {
+    // default to whatever target is detected
+    // if both, default to dmm
     fn default() -> Self {
-        // Self::UnityPlayer
-        Self::CriManaVpx
+        if detect_dmm_install_dir().is_some() {
+            Self::UnityPlayer
+        } else if detect_steam_install_dir().is_some() {
+            Self::CriManaVpx
+        } else {
+            Self::UnityPlayer
+        }
     }
 }
 
