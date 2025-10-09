@@ -187,10 +187,10 @@ impl Installer {
             let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
             let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
 
-            if backup_exe.exists() {
-                std::fs::remove_file(&backup_exe)?;
+            // back up exe if not existing, don't overwrite if it's already there
+            if !backup_exe.exists() {
+                std::fs::copy(&orig_exe, &backup_exe)?;
             }
-            std::fs::copy(&orig_exe, &backup_exe)?;
         }
 
         Ok(())
