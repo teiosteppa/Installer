@@ -153,7 +153,14 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
 
             // Init targets
             let target_combo = unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() };
-            let mut default_target = 0;
+            let mut default_target = if let Some(version) = installer.game_version() {
+                match version {
+                    installer::GameVersion::DMM => 0,
+                    installer::GameVersion::Steam => 1,
+                }
+            } else {
+                0
+            };
             let mut default_target_set = false;
             let mut multiple_installs = false;
             for (i, target) in installer::Target::VALUES.into_iter().enumerate() {
