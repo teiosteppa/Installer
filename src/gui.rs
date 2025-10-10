@@ -90,10 +90,14 @@ fn update_target(dialog: HWND, target_combo: HWND, index: usize) {
     let installer = get_installer(dialog);
     let target = installer::Target::VALUES[index];
 
-    installer.install_dir = Installer::detect_install_dir(target);
+    if installer.install_dir.is_none() {
+        installer.install_dir = Installer::detect_install_dir(target);
+    }
+    let install_path_edit = unsafe { GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap() };
     if let Some(path) = &installer.install_dir {
-        let install_path_edit = unsafe { GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap() };
         unsafe { let _ = SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap())); };
+    } else {
+        unsafe { let _ = SetWindowTextW(install_path_edit, &HSTRING::from("")); };
     }
 
     let mut installed = false;
@@ -163,9 +167,9 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
 
             // Init targets
             let target_combo = GetDlgItem(dialog, IDC_TARGET).unwrap();
-            let dmm_installed = installer::detect_dmm_install_dir().is_some();
-            let steam_installed = installer::detect_steam_install_dir().is_some();
-            let installed_count = [dmm_installed, steam_installed].iter().filter(|&&x| x).count();
+            let dmm_default = installer::detect_dmm_install_dir().is_some();
+            let steam_default = installer::detect_steam_install_dir().is_some();
+            let installed_count = [dmm_default, steam_default].iter().filter(|&&x| x).count();
 
             for target in installer::Target::VALUES {
                 let label = installer.get_target_display_label(*target);
@@ -179,7 +183,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
 
             update_target(dialog, target_combo, default_target_idx);
 
-            if installed_count <= 1 {
+            if installed_count == 1 {
                 let _ = EnableWindow(target_combo, false);
             }
 
@@ -220,6 +224,8 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
 
                 IDC_TARGET => {
                     if notif_code == CBN_SELCHANGE {
+                        let installer = get_installer(dialog);
+                        installer.install_dir = None;
                         let res = SendMessageW(control, CB_GETCURSEL, None, None);
                         update_target(dialog, control, res.0 as _);
                     }
