@@ -19,10 +19,7 @@ jobs:
         with:
           repository: kairusds/Hachimi-Edge
           path: Hachimi-Edge
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          sccache: "true"
+      - uses: Swatinem/rust-cache@v2
       - uses: dtolnay/rust-toolchain@stable
       - name: Cache Hachimi-Edge DLL
         id: cache-hachimi
@@ -47,10 +44,7 @@ jobs:
         with:
           repository: Hachimi-Hachimi/Cellar
           path: Cellar
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          sccache: "true"
+      - uses: Swatinem/rust-cache@v2
       - uses: dtolnay/rust-toolchain@stable
       - name: Cache Cellar DLL
         id: cache-cellar
