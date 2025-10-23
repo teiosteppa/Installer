@@ -24,7 +24,8 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
         working-directory: ./Hachimi-Edge
       - uses: Swatinem/rust-cache@v2
-        working-directory: ./Hachimi-Edge
+        with:
+          working-directory: ./Hachimi-Edge
       - uses: dtolnay/rust-toolchain@stable
       - name: Build Hachimi-Edge DLL
         run: cargo build --release
@@ -47,7 +48,8 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
         working-directory: ./Cellar
       - uses: Swatinem/rust-cache@v2
-        working-directory: ./Cellar
+        with:
+          working-directory: ./Cellar
       - uses: dtolnay/rust-toolchain@stable
       - name: Build Cellar DLL
         run: cargo build --release
