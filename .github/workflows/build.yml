@@ -19,10 +19,6 @@ jobs:
         with:
           repository: kairusds/Hachimi-Edge
           path: Hachimi-Edge
-      - name: Get Hachimi-Edge commit hash
-        id: get_hash
-        run: echo "sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
-        working-directory: ./Hachimi-Edge
       - uses: Swatinem/rust-cache@v2
         with:
           working-directory: ./Hachimi-Edge
@@ -43,10 +39,6 @@ jobs:
         with:
           repository: Hachimi-Hachimi/Cellar
           path: Cellar
-      - name: Get Cellar commit hash
-        id: get_hash
-        run: echo "sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
-        working-directory: ./Cellar
       - uses: Swatinem/rust-cache@v2
         with:
           working-directory: ./Cellar
