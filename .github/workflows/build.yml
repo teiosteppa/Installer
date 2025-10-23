@@ -20,7 +20,8 @@ jobs:
           repository: kairusds/Hachimi-Edge
           path: Hachimi-Edge
       - uses: Swatinem/rust-cache@v2
-        working-directory: ./Hachimi-Edge
+        with:
+          workspaces: ./Hachimi-Edge
       - uses: dtolnay/rust-toolchain@stable
       - name: Build Hachimi-Edge DLL
         run: cargo build --release
@@ -39,7 +40,8 @@ jobs:
           repository: Hachimi-Hachimi/Cellar
           path: Cellar
       - uses: Swatinem/rust-cache@v2
-        working-directory: ./Cellar
+        with:
+          workspaces: ./Cellar
       - uses: dtolnay/rust-toolchain@stable
       - name: Build Cellar DLL
         run: cargo build --release
