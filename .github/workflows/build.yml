@@ -24,17 +24,9 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
         working-directory: ./Hachimi-Edge
       - uses: Swatinem/rust-cache@v2
+        working-directory: ./Hachimi-Edge
       - uses: dtolnay/rust-toolchain@stable
-      - name: Cache Hachimi-Edge DLL
-        id: cache-hachimi
-        uses: actions/cache@v4
-        with:
-          path: Hachimi-Edge/target/release/hachimi.dll
-          key: ${{ runner.os }}-hachimi-dll-${{ hashFiles('Hachimi-Edge/Cargo.lock', 'Hachimi-Edge/src/**') }}
-          restore-keys: |
-            ${{ runner.os }}-hachimi-dll-${{ steps.get_hash.outputs.sha }}
       - name: Build Hachimi-Edge DLL
-        if: steps.cache-hachimi.outputs.cache-hit != 'true'
         run: cargo build --release
         working-directory: ./Hachimi-Edge
       - uses: actions/upload-artifact@v4
@@ -55,17 +47,9 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
         working-directory: ./Cellar
       - uses: Swatinem/rust-cache@v2
+        working-directory: ./Cellar
       - uses: dtolnay/rust-toolchain@stable
-      - name: Cache Cellar DLL
-        id: cache-cellar
-        uses: actions/cache@v4
-        with:
-          path: Hachimi-Edge/target/release/hachimi.dll
-          key: ${{ runner.os }}-hachimi-dll-${{ hashFiles('Cellar/Cargo.lock', 'Cellar/src/**') }}
-          restore-keys: |
-            ${{ runner.os }}-hachimi-dll-${{ steps.get_hash.outputs.sha }}
       - name: Build Cellar DLL
-        if: steps.cache-cellar.outputs.cache-hit != 'true'
         run: cargo build --release
         working-directory: ./Cellar
       - uses: actions/upload-artifact@v4

@@ -294,6 +294,7 @@ impl Installer {
         let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
 
         const EXPECTED_ORIGINAL_HASH: &str = "5c7f6541bfbe8b89d7eef7f971d9ffb8656a7c724d0dfe603bad1c6630b68bcc";
+        const EXPECTED_PATCHED_HASH: &str = "9d6955463a0a509a2355d2227a4ee9ef0ca5da3f0f908b0c846a1e3c218cb703";
 
         match self.game_version {
             Some(GameVersion::DMM) => {},
@@ -301,27 +302,47 @@ impl Installer {
                 let steam_exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
                 let backup_exe_path = steam_exe_path.with_extension("exe.bak");
 
-                if let Err(e) = utils::verify_file_hash(&steam_exe_path, EXPECTED_ORIGINAL_HASH) {
-                    return Err(Error::VerificationError(format!("Found UmamusumePrettyDerby_Jpn.exe, but its hash is incorrect. {}", e)));
+                let mut needs_patching = false;
+
+                match utils::verify_file_hash(&steam_exe_path, EXPECTED_ORIGINAL_HASH) {
+                    Ok(_) => {
+                        needs_patching = true;
+                    }
+                    Err(original_hash_err) => {
+                        match utils::verify_file_hash(&steam_exe_path, EXPECTED_PATCHED_HASH) {
+                            Ok(_) => {
+                                needs_patching = false;
+                            }
+                            Err(_) => {
+                                let error_msg = format!(
+                                    "Found UmamusumePrettyDerby_Jpn.exe, but its hash is incorrect. It matches neither the original nor the known patched version. {}",
+                                    original_hash_err
+                                );
+                                return Err(Error::VerificationError(error_msg));
+                            }
+                        }
+                    }
                 }
 
-                if !backup_exe_path.exists() {
-                    std::fs::copy(&steam_exe_path, &backup_exe_path)?;
+                if needs_patching {
+                    if !backup_exe_path.exists() {
+                        std::fs::copy(&steam_exe_path, &backup_exe_path)?;
+                    }
+
+                    let original_exe_data = std::fs::read(&steam_exe_path)?;
+                    let compressed_patch_data = include_bytes!("../umamusume.patch.zst");
+                    let mut patch_data = Vec::new();
+                    let mut decoder = zstd::Decoder::new(&compressed_patch_data[..])?;
+                    decoder.read_to_end(&mut patch_data)?;
+
+                    let temp_exe_path = steam_exe_path.with_extension("exe.tmp");
+
+                    utils::apply_patch(&original_exe_data, &patch_data, &temp_exe_path)
+                        .map_err(|e| Error::Generic(e.to_string().into()))?;
+
+                    std::fs::remove_file(&steam_exe_path)?;
+                    std::fs::rename(&temp_exe_path, &steam_exe_path)?;
                 }
-
-                let original_exe_data = std::fs::read(&steam_exe_path)?;
-                let compressed_patch_data = include_bytes!("../umamusume.patch.zst");
-                let mut patch_data = Vec::new();
-                let mut decoder = zstd::Decoder::new(&compressed_patch_data[..])?;
-                decoder.read_to_end(&mut patch_data)?;
-
-                let temp_exe_path = steam_exe_path.with_extension("exe.tmp");
-                
-                utils::apply_patch(&original_exe_data, &patch_data, &temp_exe_path)
-                    .map_err(|e| Error::Generic(e.to_string().into()))?;
-
-                std::fs::remove_file(&steam_exe_path)?;
-                std::fs::rename(&temp_exe_path, &steam_exe_path)?;
             },
             None => {
                 return Err(Error::IoError(std::io::Error::new(
