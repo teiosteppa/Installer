@@ -97,7 +97,7 @@ pub fn is_game_running() -> bool {
 
     while res.is_ok() {
         let process_name = unsafe { CStr::from_ptr(entry.szExeFile.as_ptr()) };
-        if process_name == c"umamusume.exe" {
+        if process_name == c"umamusume.exe" || process_name == c"UmamusumePrettyDerby_Jpn.exe" {
             return true;
         }
 
