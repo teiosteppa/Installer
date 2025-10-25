@@ -1,5 +1,5 @@
 use sha2::{Digest, Sha256};
-use std::{ffi::{CStr, OsString}, os::windows::ffi::OsStringExt, path::{Path, PathBuf}, fs::File, io::{Read, Write}};
+use std::{ffi::{CStr, OsString, CString}, os::windows::ffi::OsStringExt, path::{Path, PathBuf}, fs::File, io::{Read, Write}};
 
 use pelite::resources::version_info::VersionInfo;
 use windows::{
@@ -99,10 +99,33 @@ pub fn is_game_running() -> bool {
 
     while res.is_ok() {
         let process_name = unsafe { CStr::from_ptr(entry.szExeFile.as_ptr()) };
-        if process_name == c"umamusume.exe" {
+        if process_name == c"umamusume.exe" || process_name == c"UmamusumePrettyDerby_Jpn.exe" {
             return true;
         }
 
+        res = unsafe { Process32Next(snapshot, &mut entry) };
+    }
+
+    false
+}
+
+pub fn is_specific_process_running(exe_name: &str) -> bool {
+    let Ok(exe_name_cstr) = CString::new(exe_name) else {
+        return false;
+    };
+
+    let Ok(snapshot) = (unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPALL, 0) }) else {
+        return false;
+    };
+    let mut entry = PROCESSENTRY32::default();
+    entry.dwSize = std::mem::size_of::<PROCESSENTRY32>() as u32;
+    let mut res = unsafe { Process32First(snapshot, &mut entry) };
+
+    while res.is_ok() {
+        let process_name = unsafe { CStr::from_ptr(entry.szExeFile.as_ptr()) };
+        if process_name == exe_name_cstr.as_c_str() {
+            return true;
+        }
         res = unsafe { Process32Next(snapshot, &mut entry) };
     }
 

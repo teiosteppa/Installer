@@ -302,16 +302,14 @@ impl Installer {
                 let steam_exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
                 let backup_exe_path = steam_exe_path.with_extension("exe.bak");
 
-                let mut needs_patching = false;
-
-                match utils::verify_file_hash(&steam_exe_path, EXPECTED_ORIGINAL_HASH) {
+                let needs_patching = match utils::verify_file_hash(&steam_exe_path, EXPECTED_ORIGINAL_HASH) {
                     Ok(_) => {
-                        needs_patching = true;
+                        true
                     }
                     Err(original_hash_err) => {
                         match utils::verify_file_hash(&steam_exe_path, EXPECTED_PATCHED_HASH) {
                             Ok(_) => {
-                                needs_patching = false;
+                                false
                             }
                             Err(_) => {
                                 let error_msg = format!(
@@ -322,7 +320,7 @@ impl Installer {
                             }
                         }
                     }
-                }
+                };
 
                 if needs_patching {
                     if !backup_exe_path.exists() {
@@ -352,46 +350,52 @@ impl Installer {
             }
         }
 
-        if let Some(GameVersion::Steam) = self.game_version &&
-           let Some(install_dir) = &self.install_dir &&
-           let Some(steamapps_path) = find_steamapps_folder(install_dir)
-        {
-            const STEAM_APP_ID: &str = "3564400";
-            let manifest_path = steamapps_path.join(format!("appmanifest_{}.acf", STEAM_APP_ID));
-            let backup_path = manifest_path.with_extension("acf.bak");
+        if self.hwnd.is_some() {
+            if let Some(GameVersion::Steam) = self.game_version &&
+               let Some(install_dir) = &self.install_dir &&
+               let Some(steamapps_path) = find_steamapps_folder(install_dir)
+            {
+                const STEAM_APP_ID: &str = "3564400";
+                let manifest_path = steamapps_path.join(format!("appmanifest_{}.acf", STEAM_APP_ID));
+                let backup_path = manifest_path.with_extension("acf.bak");
 
-            if !manifest_path.is_file() {
-                return Ok(());
-            }
-            
-            let Ok(content) = std::fs::read_to_string(&manifest_path) else { return Ok(()) };
-
-            if content.contains("\"AutoUpdateBehavior\"\t\t\"1\"") {
-                return Ok(());
-            }
-            
-            let res = unsafe {
-                MessageBoxW(
-                    self.hwnd.as_ref(),
-                    w!("To prevent accidental updates that could break the mod, would you like to change Steam's auto-update setting for this game to 'Update only when I launch it'?\n\nA backup of your original setting will be made."),
-                    w!("Change Auto-Update Setting?"),
-                    MB_ICONQUESTION | MB_YESNO
-                )
-            };
-
-            if res == IDYES {
-                if !backup_path.exists() {
-                    std::fs::copy(&manifest_path, &backup_path)?;
+                if !manifest_path.is_file() {
+                    return Ok(());
                 }
-                let new_content = content.replace("\"AutoUpdateBehavior\"\t\t\"0\"", "\"AutoUpdateBehavior\"\t\t\"1\"");
-                if std::fs::write(&manifest_path, new_content).is_ok() {
-                    unsafe {
-                        MessageBoxW(
-                            self.hwnd.as_ref(),
-                            w!("Steam's auto-update setting for this game has been changed."),
-                            w!("Auto-update Setting Changed"),
-                            MB_ICONINFORMATION | MB_OK
-                        );
+                
+                let Ok(content) = std::fs::read_to_string(&manifest_path) else { return Ok(()) };
+
+                if content.contains("\"AutoUpdateBehavior\"\t\t\"1\"") {
+                    return Ok(());
+                }
+
+                if backup_path.exists() {
+                    return Ok(());
+                }
+
+                let res = unsafe {
+                    MessageBoxW(
+                        self.hwnd.as_ref(),
+                        w!("To prevent accidental updates that could break the mod, would you like to change Steam's auto-update setting for this game to 'Update only when I launch it'?\n\nA backup of your original setting will be made."),
+                        w!("Change Auto-Update Setting?"),
+                        MB_ICONQUESTION | MB_YESNO
+                    )
+                };
+
+                if res == IDYES {
+                    if !backup_path.exists() {
+                        std::fs::copy(&manifest_path, &backup_path)?;
+                    }
+                    let new_content = content.replace("\"AutoUpdateBehavior\"\t\t\"0\"", "\"AutoUpdateBehavior\"\t\t\"1\"");
+                    if std::fs::write(&manifest_path, new_content).is_ok() {
+                        unsafe {
+                            MessageBoxW(
+                                self.hwnd.as_ref(),
+                                w!("Steam's auto-update setting for this game has been changed."),
+                                w!("Auto-update Setting Changed"),
+                                MB_ICONINFORMATION | MB_OK
+                            );
+                        }
                     }
                 }
             }

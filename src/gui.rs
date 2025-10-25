@@ -8,9 +8,12 @@ use windows::{core::{w, HSTRING}, Win32::{
         SetWindowLongPtrW,SetWindowTextW, ShowWindow, TranslateMessage,
         CBN_SELCHANGE, CB_ADDSTRING, CB_DELETESTRING, CB_GETCURSEL, CB_INSERTSTRING, CB_SETCURSEL,
         GWLP_USERDATA, ICON_BIG, IDOK, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONWARNING,
-        MB_OK, MB_OKCANCEL, MB_YESNO, MSG, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_INITDIALOG, WM_SETICON
+        MB_OK, MB_OKCANCEL, MB_YESNO, MSG, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_INITDIALOG, WM_SETICON,
+        SetTimer, KillTimer
     }}
 }};
+
+const ID_TIMER_GAMERUNNING: usize = 1;
 
 pub fn run(update_status: UpdateStatus) -> Result<(), windows::core::Error> {
     unsafe {
@@ -62,6 +65,26 @@ fn get_installer(dialog: HWND) -> &'static mut Installer {
     unsafe { (GetWindowLongPtrW(dialog, GWLP_USERDATA) as *mut Installer).as_mut().unwrap() }
 }
 
+fn update_game_running_state(dialog: HWND) {
+    let installer = get_installer(dialog);
+
+    let is_running = match installer.game_version() {
+        Some(GameVersion::DMM) => utils::is_specific_process_running("umamusume.exe"),
+        Some(GameVersion::Steam) => utils::is_specific_process_running("UmamusumePrettyDerby_Jpn.exe"),
+        None => false,
+    };
+
+    let install_button = unsafe { GetDlgItem(dialog, IDC_INSTALL).unwrap() };
+    let uninstall_button = unsafe { GetDlgItem(dialog, IDC_UNINSTALL).unwrap() };
+
+    let is_installed = installer.is_current_target_installed();
+
+    unsafe {
+        let _ = EnableWindow(install_button, !is_running);
+        let _ = EnableWindow(uninstall_button, !is_running && is_installed);
+    }
+}
+
 fn update_target(dialog: HWND, target_combo: HWND, index: usize) {
     let installer = get_installer(dialog);
     let target = installer::Target::VALUES[index];
@@ -89,6 +112,7 @@ fn update_target(dialog: HWND, target_combo: HWND, index: usize) {
     }
 
     installer.target = target;
+    update_game_running_state(dialog);
 }
 
 unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> isize {
@@ -103,6 +127,10 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             if let Ok(icon) = unsafe { LoadIconW(instance, IDI_HACHIMI) } {
                 unsafe { SendMessageW(dialog, WM_SETICON, WPARAM(ICON_BIG as _), LPARAM(icon.0 as _)) };
                 let _ = unsafe { DestroyIcon(icon) };
+            }
+
+            unsafe {
+                SetTimer(dialog, ID_TIMER_GAMERUNNING, 1000, None);
             }
 
             let dmm_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_DMM).unwrap() };
@@ -321,6 +349,25 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             return 0;
                         }
                     }
+
+                    let (is_running, exe_name) = match installer.game_version() {
+                        Some(GameVersion::DMM) => (utils::is_specific_process_running("umamusume.exe"), "umamusume.exe"),
+                        Some(GameVersion::Steam) => (utils::is_specific_process_running("UmamusumePrettyDerby_Jpn.exe"), "UmamusumePrettyDerby_Jpn.exe"),
+                        None => (false, "the game")
+                    };
+
+                    if is_running {
+                        unsafe {
+                            MessageBoxW(
+                                dialog,
+                                &HSTRING::from(format!("{} is currently running. Please close it first.", exe_name)),
+                                w!("Hachimi Installer"),
+                                MB_ICONERROR | MB_OK
+                            );
+                        }
+                        return 0;
+                    }
+
                     match installer.pre_install()
                         .and_then(|_| installer.install())
                         .and_then(|_| installer.post_install())
@@ -337,6 +384,25 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
 
                 IDC_UNINSTALL => {
                     let installer = get_installer(dialog);
+
+                    let (is_running, exe_name) = match installer.game_version() {
+                        Some(GameVersion::DMM) => (utils::is_specific_process_running("umamusume.exe"), "umamusume.exe"),
+                        Some(GameVersion::Steam) => (utils::is_specific_process_running("UmamusumePrettyDerby_Jpn.exe"), "UmamusumePrettyDerby_Jpn.exe"),
+                        None => (false, "the game")
+                    };
+
+                    if is_running {
+                        unsafe {
+                            MessageBoxW(
+                                dialog,
+                                &HSTRING::from(format!("{} is currently running. Please close it first.", exe_name)),
+                                w!("Hachimi Installer"),
+                                MB_ICONERROR | MB_OK
+                            );
+                        }
+                        return 0;
+                    }
+
                     let res = unsafe {
                         MessageBoxW(
                             dialog,
@@ -392,6 +458,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
         }
         
         WM_CLOSE => {
+            let _ = unsafe { KillTimer(dialog, ID_TIMER_GAMERUNNING) };
             unsafe { PostQuitMessage(0) };
             0
         }
