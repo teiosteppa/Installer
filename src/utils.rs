@@ -1,5 +1,6 @@
 use sha2::{Digest, Sha256};
 use std::{ffi::{CStr, OsString, CString}, os::windows::ffi::OsStringExt, path::{Path, PathBuf}, fs::File, io::{Read, Write}};
+use crate::i18n::{t};
 
 use pelite::resources::version_info::VersionInfo;
 use windows::{
@@ -68,7 +69,7 @@ pub fn open_select_folder_dialog<P: AsRef<Path>>(
         unsafe { CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()? };
 
     unsafe {
-        dialog.SetTitle(&HSTRING::from("Select a folder")).ok()?;
+        dialog.SetTitle(&HSTRING::from(t!("util.select_folder"))).ok()?;
         dialog
             .SetOptions(FOS_FILEMUSTEXIST | FOS_PICKFOLDERS)
             .ok()?;
@@ -141,7 +142,7 @@ pub fn get_system_directory() -> PathBuf {
 pub fn verify_file_hash(path: &Path, expected_hash: &str) -> Result<(), String> {
     let mut file = match File::open(path) {
         Ok(f) => f,
-        Err(e) => return Err(format!("Could not open file: {}", e)),
+        Err(e) => return Err(t!("details.hash_error.open_file", error = e.to_string())),
     };
 
     let mut hasher = Sha256::new();
@@ -150,7 +151,7 @@ pub fn verify_file_hash(path: &Path, expected_hash: &str) -> Result<(), String> 
     loop {
         let n = match file.read(&mut buffer) {
             Ok(n) => n,
-            Err(e) => return Err(format!("Could not read file: {}", e)),
+            Err(e) => return Err(t!("details.hash_error.read_file", error = e.to_string())),
         };
         if n == 0 {
             break;
@@ -163,9 +164,10 @@ pub fn verify_file_hash(path: &Path, expected_hash: &str) -> Result<(), String> 
     if found_hash.to_lowercase() == expected_hash.to_lowercase() {
         Ok(())
     } else {
-        Err(format!(
-            "Hash mismatch. Expected {}, but found {}",
-            expected_hash, found_hash
+        Err(t!(
+            "details.hash_error.mismatch",
+            expected = expected_hash,
+            found = found_hash
         ))
     }
 }

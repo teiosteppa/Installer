@@ -4,7 +4,8 @@ use pelite::resources::version_info::Language;
 use registry::Hive;
 use steamlocate::SteamDir;
 use tinyjson::JsonValue;
-use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, IDYES, MB_ICONINFORMATION, MB_ICONWARNING, MB_ICONQUESTION, MB_OK, MB_OKCANCEL, MB_YESNO}}}};
+use crate::i18n::t;
+use windows::{core::HSTRING, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, IDYES, MB_ICONINFORMATION, MB_ICONWARNING, MB_ICONQUESTION, MB_OK, MB_OKCANCEL, MB_YESNO}}}};
 
 use crate::utils::{self, get_system_directory};
 
@@ -312,9 +313,15 @@ impl Installer {
                                 false
                             }
                             Err(_) => {
-                                let error_msg = format!(
-                                    "Found UmamusumePrettyDerby_Jpn.exe, but its hash is incorrect. It matches neither the original nor the known patched version. {}",
-                                    original_hash_err
+                                let file_name_str = steam_exe_path
+                                    .file_name()
+                                    .unwrap_or_default()
+                                    .to_string_lossy();
+
+                                let error_msg = t!(
+                                    "gui.error_verification_body",
+                                    file_name = file_name_str,
+                                    details = original_hash_err.to_string()
                                 );
                                 return Err(Error::VerificationError(error_msg));
                             }
@@ -376,8 +383,8 @@ impl Installer {
                 let res = unsafe {
                     MessageBoxW(
                         self.hwnd.as_ref(),
-                        w!("To prevent accidental updates that could break the mod, would you like to change Steam's auto-update setting for this game to 'Update only when I launch it'?\n\nA backup of your original setting will be made."),
-                        w!("Change Auto-Update Setting?"),
+                        &HSTRING::from(t!("installer.steam_auto_update_recommendation_prompt")),
+                        &HSTRING::from(t!("installer.change_auto_update_setting")),
                         MB_ICONQUESTION | MB_YESNO
                     )
                 };
@@ -391,8 +398,8 @@ impl Installer {
                         unsafe {
                             MessageBoxW(
                                 self.hwnd.as_ref(),
-                                w!("Steam's auto-update setting for this game has been changed."),
-                                w!("Auto-update Setting Changed"),
+                                &HSTRING::from(t!("installer.steam_auto_update_success_message")),
+                                &HSTRING::from(t!("installer.auto_update_setting_changed")),
                                 MB_ICONINFORMATION | MB_OK
                             );
                         }
@@ -438,9 +445,8 @@ impl Installer {
                             let res = unsafe {
                                 MessageBoxW(
                                     self.hwnd.as_ref(),
-                                    w!("DotLocal DLL redirection is not enabled. This is required for the specified install target.\n\
-                                        Would you like to enable it?"),
-                                    w!("Install"),
+                                    &HSTRING::from(t!("installer.dotlocal_not_enabled")),
+                                    &HSTRING::from(t!("installer.install")),
                                     MB_ICONINFORMATION | MB_OKCANCEL
                                 )
                             };
@@ -449,8 +455,8 @@ impl Installer {
                                 unsafe {
                                     MessageBoxW(
                                         self.hwnd.as_ref(),
-                                        w!("Restart your computer to apply the changes."),
-                                        w!("DLL redirection enabled"),
+                                        &HSTRING::from(t!("installer.restart_to_apply")),
+                                        &HSTRING::from(t!("installer.dll_redirection_enabled")),
                                         MB_ICONINFORMATION | MB_OK
                                     );
                                 }
@@ -460,8 +466,8 @@ impl Installer {
                     Err(e) => {
                         unsafe { MessageBoxW(
                             self.hwnd.as_ref(),
-                            &HSTRING::from(format!("Failed to open IFEO registry key: {}", e)),
-                            w!("Warning"),
+                            &HSTRING::from(t!("installer.failed_open_ifeo", error = e)),
+                            &HSTRING::from(t!("installer.warning")),
                             MB_OK | MB_ICONWARNING
                         )};
                     }
@@ -524,8 +530,8 @@ impl Installer {
                     let res = unsafe {
                         MessageBoxW(
                             self.hwnd.as_ref(),
-                            w!("Would you like to restore your original Steam auto-update setting for this game?"),
-                            w!("Restore Auto-Update Setting?"),
+                            &HSTRING::from(t!("installer.steam_auto_update_restore_prompt")),
+                            &HSTRING::from(t!("installer.restore_auto_update_setting")),
                             MB_ICONQUESTION | MB_YESNO
                         )
                     };
@@ -543,8 +549,8 @@ impl Installer {
                                     unsafe {
                                         MessageBoxW(
                                             self.hwnd.as_ref(),
-                                            w!("Your original auto-update setting has been restored."),
-                                            w!("Setting Restored"),
+                                            &HSTRING::from(t!("installer.steam_auto_update_restored_message")),
+                                            &HSTRING::from(t!("installer.setting_restored")),
                                             MB_ICONINFORMATION | MB_OK
                                         );
                                     }
@@ -657,13 +663,13 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::NoInstallDir => write!(f, "No install location specified"),
-            Error::InvalidInstallDir => write!(f, "Invalid game folder. The selected folder does not contain umamusume.exe or UmamusumePrettyDerby_Jpn.exe."),
-            Error::CannotFindTarget => write!(f, "Cannot find target DLL in specified install location"),
-            Error::IoError(e) => write!(f, "I/O error: {}", e),
-            Error::RegistryValueError(e) => write!(f, "Registry value error: {}", e),
-            Error::VerificationError(e) => write!(f, "Verification error: {}", e),
-            Error::Generic(e) => write!(f, "An unexpected error occurred: {}", e),
+            Error::NoInstallDir => write!(f, "{}", t!("error.no_install_dir")),
+            Error::InvalidInstallDir => write!(f, "{}", t!("error.invalid_install_dir")),
+            Error::CannotFindTarget => write!(f, "{}", t!("error.cannot_find_target")),
+            Error::IoError(e) => write!(f, "{}", t!("error.io_error", error = e)),
+            Error::RegistryValueError(e) => write!(f, "{}", t!("error.registry_value_error", error = e)),
+            Error::VerificationError(e) => write!(f, "{}", t!("error.verificaiton_error", error = e)),
+            Error::Generic(e) => write!(f, "{}", t!("error.generic", error = e)),
         }
     }
 }

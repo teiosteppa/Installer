@@ -23,9 +23,13 @@ define_idc!(IDC_INSTALL_PATH, 1003);
 define_idc!(IDC_INSTALL_PATH_BROWSE, 1004);
 define_idc!(IDC_TARGET, 1005);
 define_idc!(IDC_INSTALLED, 1006);
-define_idc!(IDC_VERSION_STEAM, 1007);
-define_idc!(IDC_VERSION_DMM, 1008);
-define_idc!(IDC_VERSION_GROUP, 1009);
+define_idc!(IDC_LANGUAGE_LABEL, 1007);
+define_idc!(IDC_LANGUAGE_COMBO, 1008);
+define_idc!(IDC_INSTALL_LOCATION, 1009);
+define_idc!(IDC_TARGRT, 1010);
+define_idc!(IDC_VERSION_STEAM, 1011);
+define_idc!(IDC_VERSION_DMM, 1012);
+define_idc!(IDC_VERSION_GROUP, 1013);
 
 // Icons
 define_id!(IDI_HACHIMI, 107);

@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
+use crate::i18n::t;
 use windows::{
-    core::{w, HSTRING},
+    core::HSTRING,
     Win32::UI::{
         Shell::ShellExecuteW,
         WindowsAndMessaging::{MessageBoxW, IDCANCEL, MB_ICONERROR, MB_ICONINFORMATION, MB_OK, MB_OKCANCEL, SW_NORMAL}
@@ -88,13 +89,15 @@ impl Args {
 pub fn run(update_status: &UpdateStatus) -> Result<bool, installer::Error> {
     match update_status {
         UpdateStatus::Updated(version) => println!(
-            "[UPDATE] Successfully updated to the nightly build from {}! Please restart.",
-            version
+            "{}",
+            t!("cli.update_status.success", version = version.to_string())
         ),
         UpdateStatus::NotNeeded => {
-            println!("[UPDATE] You are already on the latest nightly build.")
+            println!("{}", t!("cli.update_status.not_needed"))
         }
-        UpdateStatus::Failed(msg) => eprintln!("[UPDATE ERROR] {}", msg),
+        UpdateStatus::Failed(msg) => {
+            eprintln!("{}", t!("cli.update_status.error", error = msg))
+        }
         UpdateStatus::Disabled => {}
     }
 
@@ -110,8 +113,8 @@ pub fn run(update_status: &UpdateStatus) -> Result<bool, installer::Error> {
                 unsafe {
                     let res = MessageBoxW(
                         None,
-                        w!("The game is currently running. Please close the game and press OK to install."),
-                        w!("Hachimi Installer"),
+                        &HSTRING::from(t!("cli.game_running")),
+                        &HSTRING::from(t!("cli.installer_title")),
                         MB_ICONINFORMATION | MB_OKCANCEL
                     );
                     if res == IDCANCEL {
@@ -134,9 +137,8 @@ pub fn run(update_status: &UpdateStatus) -> Result<bool, installer::Error> {
             unsafe {
                 MessageBoxW(
                     None,
-                    w!("Failed to determine target type. Please make sure that the path is correct \
-                        or explicitly specify a target name."),
-                    w!("Hachimi Installer"),
+                    &HSTRING::from(t!("cli.failed_determine_target")),
+                    &HSTRING::from(t!("cli.installer_title")),
                     MB_ICONERROR | MB_OK
                 );
             }
@@ -147,7 +149,7 @@ pub fn run(update_status: &UpdateStatus) -> Result<bool, installer::Error> {
 
         if let Some(dir) = args.install_dir {
             if let Err(e) = installer.set_install_dir(dir) {
-                unsafe { MessageBoxW(None, &HSTRING::from(e.to_string()), w!("Hachimi Installer"), MB_ICONERROR | MB_OK); }
+                unsafe { MessageBoxW(None, &HSTRING::from(e.to_string()), &HSTRING::from(t!("cli.installer_title")), MB_ICONERROR | MB_OK); }
                 return Err(e);
             }
         } else {
@@ -173,7 +175,7 @@ pub fn run(update_status: &UpdateStatus) -> Result<bool, installer::Error> {
         })();
 
         if let Err(e) = res {
-            unsafe { MessageBoxW(None, &HSTRING::from(e.to_string()), w!("Hachimi Installer"), MB_ICONERROR | MB_OK); }
+            unsafe { MessageBoxW(None, &HSTRING::from(e.to_string()), &HSTRING::from(t!("cli.installer_title")), MB_ICONERROR | MB_OK); }
             return Err(e);
         }
 
