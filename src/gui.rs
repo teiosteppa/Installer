@@ -166,7 +166,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                 let packaged_ver_static = GetDlgItem(dialog, IDC_PACKAGED_VER).unwrap();
                 _ = SetWindowTextW(
                     packaged_ver_static,
-                    &HSTRING::from(format!("Available version: {}", env!("HACHIMI_VERSION")))
+                    &HSTRING::from(t!("gui.packaged_ver", ver = env!("HACHIMI_VERSION")))
                 );
             }
             #[cfg(feature = "net_install")]
@@ -310,8 +310,8 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                     if installer.pre_install().is_err() {
                         MessageBoxW(
                             dialog,
-                            &HSTRING::from(t!("Failed to back up game EXE, use caution when uninstalling.")),
-                            &HSTRING::from(t!("Warning")),
+                            &HSTRING::from(t!("gui.warning_no_backup")),
+                            &HSTRING::from(t!("gui.warning")),
                             MB_ICONWARNING | MB_OK
                         );
                     }
@@ -344,7 +344,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             // fall through but clarify danger
                             // only interrupt if error is not FailedToRestore
                             if matches!(e, installer::Error::FailedToRestore) {
-                                MessageBoxW(dialog, &HSTRING::from(e.to_string()), &HSTRING::from(t!("Warning")), MB_ICONWARNING | MB_OK);
+                                MessageBoxW(dialog, &HSTRING::from(e.to_string()), &HSTRING::from(t!("gui.warning")), MB_ICONWARNING | MB_OK);
                             } else {
                                 MessageBoxW(dialog, &HSTRING::from(e.to_string()), &HSTRING::from(t!("gui.error")), MB_ICONERROR | MB_OK);
                                 return 0;

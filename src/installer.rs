@@ -475,7 +475,7 @@ impl std::fmt::Display for Error {
             Error::NoInstallDir => write!(f, "{}", t!("error.no_install_dir")),
             Error::IoError(e) => write!(f, "{}", t!("error.io_error", error = e)),
             Error::RegistryValueError(e) => write!(f, "{}", t!("error.registry_value_error", error = e)),
-            Error::FailedToRestore => write!(f, "Failed to restore backup. You might need to validate your game files."),
+            Error::FailedToRestore => write!(f, "{}", t!("error.failed_to_restore")),
             #[cfg(feature = "net_install")]
             Error::ReqwestError(e) => write!(f, "Download error: {}", e),
             #[cfg(feature = "net_install")]
