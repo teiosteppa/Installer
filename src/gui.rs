@@ -17,8 +17,7 @@ use windows::{core::{HSTRING}, Win32::{
     }},
 }};
 
-fn localize_controls(dialog: HWND) {
-    unsafe {
+unsafe fn localize_controls(dialog: HWND) {
         // Title
         _ = SetWindowTextW(dialog, &HSTRING::from(t!("gui.title")));
         // Button / Tag
@@ -29,8 +28,6 @@ fn localize_controls(dialog: HWND) {
         _ = SetWindowTextW(GetDlgItem(dialog, IDC_PACKAGED_VER).unwrap(), &HSTRING::from(t!("gui.packaged_ver", ver = env!("HACHIMI_VERSION"))));
         _ = SetWindowTextW(GetDlgItem(dialog, IDC_INSTALL_LOCATION).unwrap(), &HSTRING::from(t!("gui.install_location")));
         _ = SetWindowTextW(GetDlgItem(dialog, IDC_TARGRT).unwrap(), &HSTRING::from(t!("gui.target")));
-
-    }
 }
 
 pub fn run() -> Result<(), windows::core::Error> {
@@ -232,14 +229,14 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             }
 
             // Show notice for multiple installs
-            if multiple_installs {
-                MessageBoxW(
-                    dialog,
-                    &HSTRING::from(t!("gui.warning_multi-installation")),
-                    &HSTRING::from(t!("gui.warning")),
-                    MB_ICONWARNING | MB_OK
-                );
-            }
+            // if multiple_installs {
+            //     MessageBoxW(
+            //         dialog,
+            //         &HSTRING::from(t!("gui.warning_multi-installation")),
+            //         &HSTRING::from(t!("gui.warning")),
+            //         MB_ICONWARNING | MB_OK
+            //     );
+            // }
 
             1
         },
@@ -313,8 +310,8 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                     if installer.pre_install().is_err() {
                         MessageBoxW(
                             dialog,
-                            w!("Failed to back up game EXE, use caution when uninstalling."),
-                            w!("Warning"),
+                            &HSTRING::from(t!("Failed to back up game EXE, use caution when uninstalling.")),
+                            &HSTRING::from(t!("Warning")),
                             MB_ICONWARNING | MB_OK
                         );
                     }
@@ -347,7 +344,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             // fall through but clarify danger
                             // only interrupt if error is not FailedToRestore
                             if matches!(e, installer::Error::FailedToRestore) {
-                                MessageBoxW(dialog, &HSTRING::from(e.to_string()), w!("Warning"), MB_ICONWARNING | MB_OK);
+                                MessageBoxW(dialog, &HSTRING::from(e.to_string()), &HSTRING::from(t!("Warning")), MB_ICONWARNING | MB_OK);
                             } else {
                                 MessageBoxW(dialog, &HSTRING::from(e.to_string()), &HSTRING::from(t!("gui.error")), MB_ICONERROR | MB_OK);
                                 return 0;

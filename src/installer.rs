@@ -4,7 +4,7 @@ use pelite::resources::version_info::Language;
 use registry::Hive;
 use tinyjson::JsonValue;
 use crate::i18n::t;
-use windows::{core::{w, HSTRING}, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
+use windows::{core::HSTRING, Win32::{Foundation::HWND, UI::{Shell::{FOLDERID_RoamingAppData, SHGetKnownFolderPath, KF_FLAG_DEFAULT}, WindowsAndMessaging::{MessageBoxW, IDOK, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK, MB_OKCANCEL}}}};
 #[cfg(feature = "net_install")]
 use bytes::Bytes;
 use steamlocate::SteamDir;
@@ -473,7 +473,6 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::NoInstallDir => write!(f, "{}", t!("error.no_install_dir")),
-            Error::CannotFindTarget => write!(f, "{}", t!("error.cannot_find_target")),
             Error::IoError(e) => write!(f, "{}", t!("error.io_error", error = e)),
             Error::RegistryValueError(e) => write!(f, "{}", t!("error.registry_value_error", error = e)),
             Error::FailedToRestore => write!(f, "Failed to restore backup. You might need to validate your game files."),

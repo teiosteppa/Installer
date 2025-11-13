@@ -1,4 +1,4 @@
-use std::{ffi::{CStr, OsString}, os::windows::ffi::OsStringExt, path::{Path, PathBuf}};
+use std::{ffi::CStr, path::{Path, PathBuf}};
 use crate::i18n::{t};
 use pelite::resources::version_info::VersionInfo;
 use windows::{
