@@ -1,0 +1,46 @@
+gui:
+  title:                "Hachimi 安裝程式"
+  install:              "安裝"
+  uninstall:            "解除安裝"
+  browse:               "瀏覽..."
+  installed:            "已安裝：%{ver}"
+  packaged_ver:         "封裝版本：%{ver}"
+  install_location:     "安裝位置"
+  target:               "目標"
+  warning:              "警告"
+  warning_no_dir:       "未能偵測到遊戲的安裝位置。\n請手動選擇。"
+  warning_multi-installation:        "偵測到多個 Hachimi 安裝！\n請解除安裝其中一個，否則遊戲將無法正常運作。"
+  error:                "錯誤"
+  already_installed:    "Hachimi 已經以 %{dll} 的形式安裝"
+  replace_confirm:      "要替換 %{dll} 嗎？"
+  delete_confirm:       "要刪除 %{dll} 嗎？"
+  delete_data_dir:      "是否同時刪除 Hachimi 的資料目錄？"
+  msg_install_ok:       "安裝完成。"
+  msg_install_fail:     "%{err}"
+  msg_uninstall:        "刪除 %{dll}？"
+  msg_language:         "語言"
+  lang_en:              "English"
+  lang_zh-CN:           "简体中文"
+  lang_zh-TW:           "繁體中文"
+
+installer:
+  dotlocal_not_enabled: "尚未啟用 DotLocal DLL 重定向。指定的安裝目標需要此功能。\n是否要啟用？"
+  install: "安裝"
+  restart_to_apply: "請重新啟動電腦以套用變更。"
+  dll_redirection_enabled: "DLL 重定向已啟用"
+  failed_open_ifeo: "開啟 IFEO 註冊鍵失敗：%{error}"
+  warning: "警告"
+
+cli:
+  game_running: "遊戲正在執行中。請先關閉遊戲後再按確定繼續安裝。"
+  installer_title: "Hachimi 安裝程式"
+  failed_determine_target: "無法判斷目標類型。請確認路徑正確，或明確指定目標名稱。"
+
+util:
+  select_folder: "選擇資料夾"
+
+error:
+  no_install_dir: "未指定安裝位置"
+  cannot_find_target: "在指定的安裝位置找不到目標 DLL"
+  io_error: "I/O 錯誤：%{error}"
+  registry_value_error: "註冊值錯誤：%{error}"

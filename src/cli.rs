@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::i18n::{t};
 use windows::{
     core::{w, HSTRING},
     Win32::UI::{
@@ -98,8 +99,8 @@ pub fn run() -> Result<bool, installer::Error> {
                 unsafe {
                     let res = MessageBoxW(
                         None,
-                        w!("The game is currently running. Please close the game and press OK to install."),
-                        w!("Hachimi Installer"),
+                        &HSTRING::from(t!("cli.game_running")),
+                        &HSTRING::from(t!("cli.installer_title")),
                         MB_ICONINFORMATION | MB_OKCANCEL
                     );
                     if res == IDCANCEL {
@@ -135,9 +136,8 @@ pub fn run() -> Result<bool, installer::Error> {
             unsafe {
                 MessageBoxW(
                     None,
-                    w!("Failed to determine target type. Please make sure that the path is correct \
-                        or explicitly specify a target name."),
-                    w!("Hachimi Installer"),
+                    &HSTRING::from(t!("cli.failed_determine_target")),
+                    &HSTRING::from(t!("cli.installer_title")),
                     MB_ICONERROR | MB_OK
                 );
             }

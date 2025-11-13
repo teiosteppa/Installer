@@ -1,0 +1,46 @@
+gui:
+  title:                "Hachimi Installer"
+  install:              "Install"
+  uninstall:            "Uninstall"
+  browse:               "Browse..."
+  installed:            "Installed: %{ver}"
+  packaged_ver:         "Packaged version: %{ver}"
+  install_location: "Install location"
+  target: "Target"
+  warning:              "Warning"
+  warning_no_dir:       "Failed to detect the game's install location.\nPlease select it manually."
+  warning_multi-installation:        "Multiple installations of Hachimi detected! \nPlease uninstall one of them, otherwise the game will not work correctly."
+  error: "Error"
+  already_installed: "Hachimi is already installed as %{dll}"
+  replace_confirm: "Replace %{dll}?"
+  delete_confirm: "Delete %{dll}?"
+  delete_data_dir: "Do you also want to delete Hachimi's data directory?"
+  msg_install_ok:       "Install completed."
+  msg_install_fail:     "%{err}"
+  msg_uninstall:        "Delete %{dll}?"
+  msg_language:         "Language"
+  lang_en:              "English"
+  lang_zh-CN:           "简体中文"
+  lang_zh-TW:           "繁體中文"
+
+installer:
+  dotlocal_not_enabled: "DotLocal DLL redirection is not enabled. This is required for the specified install target.\nWould you like to enable it?"
+  install: "Install"
+  restart_to_apply: "Restart your computer to apply the changes."
+  dll_redirection_enabled: "DLL redirection enabled"
+  failed_open_ifeo: "Failed to open IFEO registry key: %{error}"
+  warning: "Warning"
+
+cli:
+  game_running: "The game is currently running. Please close the game and press OK to install."
+  installer_title: "Hachimi Installer"
+  failed_determine_target: "Failed to determine target type. Please make sure that the path is correct or explicitly specify a target name."
+
+util:
+  select_folder: "Select a folder"
+
+error:
+  no_install_dir: "No install location specified"
+  cannot_find_target: "Cannot find target DLL in specified install location"
+  io_error: "I/O error: %{error}"
+  registry_value_error: "Registry value error: %{error}"
