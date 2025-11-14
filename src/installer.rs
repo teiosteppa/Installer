@@ -668,7 +668,7 @@ impl std::fmt::Display for Error {
             Error::CannotFindTarget => write!(f, "{}", t!("error.cannot_find_target")),
             Error::IoError(e) => write!(f, "{}", t!("error.io_error", error = e)),
             Error::RegistryValueError(e) => write!(f, "{}", t!("error.registry_value_error", error = e)),
-            Error::VerificationError(e) => write!(f, "{}", t!("error.verificaiton_error", error = e)),
+            Error::VerificationError(e) => write!(f, "{}", t!("error.verification_error", error = e)),
             Error::Generic(e) => write!(f, "{}", t!("error.generic", error = e)),
         }
     }
