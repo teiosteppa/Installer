@@ -10,7 +10,7 @@ use windows::{core::HSTRING, Win32::{
         CBN_SELCHANGE, CB_ADDSTRING, CB_DELETESTRING, CB_GETCURSEL, CB_INSERTSTRING, CB_RESETCONTENT, CB_SETCURSEL,
         GWLP_USERDATA, ICON_BIG, IDOK, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONWARNING,
         MB_OK, MB_OKCANCEL, MB_YESNO, MSG, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_INITDIALOG, WM_SETICON,
-        SetTimer, KillTimer
+        SetTimer, KillTimer, WM_TIMER
     }}
 }};
 
@@ -323,6 +323,13 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             }
 
             1
+        },
+
+        WM_TIMER => {
+            if wparam.0 == ID_TIMER_GAMERUNNING {
+                update_game_running_state(dialog);
+            }
+            0
         },
 
         WM_COMMAND => {
