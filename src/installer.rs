@@ -430,9 +430,7 @@ impl Installer {
                 };
 
                 if needs_patching {
-                    if !backup_exe_path.exists() {
-                        std::fs::copy(&steam_exe_path, &backup_exe_path)?;
-                    }
+                    std::fs::copy(&steam_exe_path, &backup_exe_path)?;
 
                     let original_exe_data = std::fs::read(&steam_exe_path)?;
                     let compressed_patch_data = include_bytes!("../umamusume.patch.zst");
