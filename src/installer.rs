@@ -419,7 +419,7 @@ impl Installer {
                                     .to_string_lossy();
 
                                 let error_msg = t!(
-                                    "gui.error_verification_body",
+                                    "installer.error_verification_body",
                                     file_name = file_name_str,
                                     details = original_hash_err.to_string()
                                 );
