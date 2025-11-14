@@ -8,6 +8,7 @@ gui:
   install_location:     "安装位置："
   target:               "目标"
   game_version:         "游戏版本"
+  steam_jp:             "Steam （日本）"
   warning:              "警告"
   warning_no_dir:       "未能检测到游戏的安装位置。\n请手动选择。"
   warning_multi-installation: "检测到多个 Hachimi 安装！\n请卸载其中一个，否则游戏将无法正常运行。"

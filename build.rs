@@ -58,6 +58,7 @@ fn set_repository_info() {
 
 fn main() {
     println!("cargo:rerun-if-changed=Cargo.toml");
+    println!("cargo:rerun-if-changed=installer.rc");
     println!("cargo:rerun-if-env-changed=INSTALLER_REPO_URL");
 
     detect_hachimi_version();

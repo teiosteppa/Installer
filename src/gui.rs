@@ -7,7 +7,7 @@ use windows::{core::HSTRING, Win32::{
         BM_SETCHECK, CreateDialogParamW, DestroyIcon, DispatchMessageW, GetDlgItem, GetMessageW,
         GetWindowLongPtrW, IsDialogMessageW, LoadIconW, MessageBoxW, PostQuitMessage, SendMessageW,
         SetWindowLongPtrW,SetWindowTextW, ShowWindow, TranslateMessage,
-        CBN_SELCHANGE, CB_ADDSTRING, CB_DELETESTRING, CB_GETCURSEL, CB_INSERTSTRING, CB_SETCURSEL,
+        CBN_SELCHANGE, CB_ADDSTRING, CB_DELETESTRING, CB_GETCURSEL, CB_INSERTSTRING, CB_RESETCONTENT, CB_SETCURSEL,
         GWLP_USERDATA, ICON_BIG, IDOK, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONWARNING,
         MB_OK, MB_OKCANCEL, MB_YESNO, MSG, SW_SHOW, WM_CLOSE, WM_COMMAND, WM_INITDIALOG, WM_SETICON,
         SetTimer, KillTimer
@@ -30,6 +30,12 @@ fn localize_controls(dialog: HWND) {
         _ = SetWindowTextW(GetDlgItem(dialog, IDC_TARGRT).unwrap(), &HSTRING::from(t!("gui.target")));
         _ = SetWindowTextW(GetDlgItem(dialog, IDC_VERSION_GROUP).unwrap(), &HSTRING::from(t!("gui.game_version")));
 
+        if let Ok(btn) = GetDlgItem(dialog, IDC_VERSION_STEAM) {
+            _ = SetWindowTextW(btn, &HSTRING::from(t!("gui.steam_jp")));
+        }
+        if let Ok(btn) = GetDlgItem(dialog, IDC_VERSION_STEAM_GLOBAL) {
+            _ = SetWindowTextW(btn, &HSTRING::from(t!("gui.steam_global")));
+        }
     }
 }
 
@@ -86,6 +92,7 @@ fn update_game_running_state(dialog: HWND) {
     let is_running = match installer.game_version() {
         Some(GameVersion::DMM) => utils::is_specific_process_running("umamusume.exe"),
         Some(GameVersion::Steam) => utils::is_specific_process_running("UmamusumePrettyDerby_Jpn.exe"),
+        Some(GameVersion::SteamGlobal) => utils::is_specific_process_running("UmamusumePrettyDerby.exe"),
         None => false,
     };
 
@@ -98,6 +105,26 @@ fn update_game_running_state(dialog: HWND) {
         let _ = EnableWindow(install_button, !is_running);
         let _ = EnableWindow(uninstall_button, !is_running && is_installed);
     }
+}
+
+fn refresh_all_target_labels(dialog: HWND) {
+    let installer = get_installer(dialog);
+    let target_combo = unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() };
+
+    let current_idx = unsafe { SendMessageW(target_combo, CB_GETCURSEL, None, None).0 as usize };
+
+    unsafe { SendMessageW(target_combo, CB_RESETCONTENT, None, None) };
+
+    for (_i, target) in installer::Target::VALUES.into_iter().enumerate() {
+        let label = installer.get_target_display_label(*target);
+        unsafe {
+            SendMessageW(
+                target_combo, CB_ADDSTRING, None, LPARAM(HSTRING::from(label).as_ptr() as _)
+            );
+        }
+    }
+
+    unsafe { SendMessageW(target_combo, CB_SETCURSEL, WPARAM(current_idx), None) };
 }
 
 fn update_target(dialog: HWND, target_combo: HWND, index: usize) {
@@ -117,7 +144,6 @@ fn update_target(dialog: HWND, target_combo: HWND, index: usize) {
         _ = SetWindowTextW(installed_static, &HSTRING::from(t!("gui.installed", ver = label)));
         _ = EnableWindow(GetDlgItem(dialog, IDC_UNINSTALL).unwrap(), installed);
     }
-        
 
     let label = installer.get_target_display_label(target);
     unsafe {
@@ -148,17 +174,34 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                 SetTimer(dialog, ID_TIMER_GAMERUNNING, 1000, None);
             }
 
-            let dmm_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_DMM).unwrap() };
-            let steam_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_STEAM).unwrap() };
+            let dmm_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_DMM).ok() };
+            let steam_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_STEAM).ok() };
+            let steam_global_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_STEAM_GLOBAL).ok() };
             let version_group = unsafe { GetDlgItem(dialog, IDC_VERSION_GROUP).unwrap() };
 
             let has_dmm = installer.dmm_install_dir().is_some();
             let has_steam = installer.steam_install_dir().is_some();
+            let has_steam_global = installer.steam_global_install_dir().is_some();
 
-            if has_dmm && has_steam {
+            let version_count = [has_dmm, has_steam, has_steam_global].iter().filter(|&&v| v).count();
+
+            if version_count > 1 {
                 let _ = unsafe { ShowWindow(version_group, SW_SHOW) };
-                let _ = unsafe { ShowWindow(dmm_radio, SW_SHOW) };
-                let _ = unsafe { ShowWindow(steam_radio, SW_SHOW) };
+                if has_dmm {
+                    if let Some(btn) = dmm_radio {
+                        let _ = unsafe { ShowWindow(btn, SW_SHOW) };
+                    }
+                }
+                if has_steam {
+                     if let Some(btn) = steam_radio {
+                        let _ = unsafe { ShowWindow(btn, SW_SHOW) };
+                    }
+                }
+                if has_steam_global {
+                    if let Some(btn) = steam_global_radio {
+                        let _ = unsafe { ShowWindow(btn, SW_SHOW) };
+                    }
+                }
 
                 let initial_version = installer.game_version().unwrap_or(GameVersion::DMM);
                 installer.set_game_version(initial_version);
@@ -168,15 +211,20 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                     _ = unsafe { SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap())) };
                 }
 
-                let (dmm_check, steam_check) = if initial_version == GameVersion::DMM {
-                    (BST_CHECKED, BST_UNCHECKED)
-                } else {
-                    (BST_UNCHECKED, BST_CHECKED)
+                let (dmm_check, steam_check, steam_global_check) = match initial_version {
+                    GameVersion::DMM => (BST_CHECKED, BST_UNCHECKED, BST_UNCHECKED),
+                    GameVersion::Steam => (BST_UNCHECKED, BST_CHECKED, BST_UNCHECKED),
+                    GameVersion::SteamGlobal => (BST_UNCHECKED, BST_UNCHECKED, BST_CHECKED),
                 };
 
-                unsafe {
-                    SendMessageW(dmm_radio, BM_SETCHECK, WPARAM(dmm_check.0 as _), None);
-                    SendMessageW(steam_radio, BM_SETCHECK, WPARAM(steam_check.0 as _), None);
+                if let Some(btn) = dmm_radio {
+                    unsafe { SendMessageW(btn, BM_SETCHECK, WPARAM(dmm_check.0 as _), None) };
+                }
+                if let Some(btn) = steam_radio {
+                    unsafe { SendMessageW(btn, BM_SETCHECK, WPARAM(steam_check.0 as _), None) };
+                }
+                if let Some(btn) = steam_global_radio {
+                    unsafe { SendMessageW(btn, BM_SETCHECK, WPARAM(steam_global_check.0 as _), None) };
                 }
             } else {
                 if let Some(path) = installer.install_dir() {
@@ -219,6 +267,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                 match version {
                     installer::GameVersion::DMM => 0,
                     installer::GameVersion::Steam => 1,
+                    installer::GameVersion::SteamGlobal => 1,
                 }
             } else {
                 0
@@ -283,12 +332,14 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             let control = HWND(lparam.0 as _);
 
             match control_id {
-                IDC_VERSION_DMM | IDC_VERSION_STEAM => {
+                IDC_VERSION_DMM | IDC_VERSION_STEAM | IDC_VERSION_STEAM_GLOBAL => {
                     let installer = get_installer(dialog);
                     let version = if control_id == IDC_VERSION_DMM {
                         GameVersion::DMM
-                    } else {
+                    } else if control_id == IDC_VERSION_STEAM {
                         GameVersion::Steam
+                    } else {
+                        GameVersion::SteamGlobal
                     };
 
                     if let Some(path) = installer.set_game_version(version) {
@@ -296,17 +347,34 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                         _ = unsafe { SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap())) };
                     }
 
-                    let dmm_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_DMM).unwrap() };
-                    let steam_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_STEAM).unwrap() };
-                    unsafe { SendMessageW(dmm_radio, BM_SETCHECK, WPARAM(BST_UNCHECKED.0 as _), None) };
-                    unsafe { SendMessageW(steam_radio, BM_SETCHECK, WPARAM(BST_UNCHECKED.0 as _), None) };
+                    if let Ok(btn) = unsafe { GetDlgItem(dialog, IDC_VERSION_DMM) } {
+                        unsafe { SendMessageW(btn, BM_SETCHECK, WPARAM(BST_UNCHECKED.0 as _), None) };
+                    }
+                    if let Ok(btn) = unsafe { GetDlgItem(dialog, IDC_VERSION_STEAM) } {
+                        unsafe { SendMessageW(btn, BM_SETCHECK, WPARAM(BST_UNCHECKED.0 as _), None) };
+                    }
+                    if let Ok(btn) = unsafe { GetDlgItem(dialog, IDC_VERSION_STEAM_GLOBAL) } {
+                        unsafe { SendMessageW(btn, BM_SETCHECK, WPARAM(BST_UNCHECKED.0 as _), None) };
+                    }
+
                     unsafe { SendMessageW(control, BM_SETCHECK, WPARAM(BST_CHECKED.0 as _), None) };
 
                     let _ = unsafe { EnableWindow(GetDlgItem(dialog, IDC_INSTALL).unwrap(), true) };
                     let _ = unsafe { EnableWindow(GetDlgItem(dialog, IDC_UNINSTALL).unwrap(), true) };
                     let _ = unsafe { EnableWindow(GetDlgItem(dialog, IDC_INSTALL_PATH_BROWSE).unwrap(), true) };
 
-                    update_target(dialog, unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() }, installer.target as _);
+                    refresh_all_target_labels(dialog);
+
+                    let new_default_target = if let Some(v) = installer.game_version() {
+                        match v {
+                            GameVersion::DMM => 0,
+                            GameVersion::Steam | GameVersion::SteamGlobal => 1,
+                        }
+                    } else {
+                        0
+                    };
+
+                    update_target(dialog, unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() }, new_default_target);
                 }
 
                 IDC_LANGUAGE_COMBO if ncode == CBN_SELCHANGE => {
@@ -314,9 +382,10 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                     let idx   = unsafe { SendMessageW(combo, CB_GETCURSEL, WPARAM(0), LPARAM(0)).0 as usize };
                     i18n::set_locale(SUPPORTED_LOCALES[idx].0);
                     localize_controls(dialog);
-                    let target_combo = unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() };
-                    update_target(dialog, target_combo,
-                                  get_installer(dialog).target as _);
+
+                    refresh_all_target_labels(dialog);
+                    let current_target_idx = get_installer(dialog).target as usize;
+                    update_target(dialog, unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() }, current_target_idx);
                 }
                 IDC_INSTALL_PATH_BROWSE => {
                     let installer = get_installer(dialog);
@@ -331,21 +400,23 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                         Ok(_) => {
                             let install_path_edit = unsafe { GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap() };
                             _ = unsafe { SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap())) };
-                            
+
                             // Update radio buttons to reflect the detected game version
                             if let Some(version) = installer.game_version() {
-                                let dmm_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_DMM).unwrap() };
-                                let steam_radio = unsafe { GetDlgItem(dialog, IDC_VERSION_STEAM).unwrap() };
-                                
-                                let (dmm_check, steam_check) = if version == GameVersion::DMM {
-                                    (BST_CHECKED, BST_UNCHECKED)
-                                } else {
-                                    (BST_UNCHECKED, BST_CHECKED)
+                                let (dmm_check, steam_check, steam_global_check) = match version {
+                                    GameVersion::DMM => (BST_CHECKED, BST_UNCHECKED, BST_UNCHECKED),
+                                    GameVersion::Steam => (BST_UNCHECKED, BST_CHECKED, BST_UNCHECKED),
+                                    GameVersion::SteamGlobal => (BST_UNCHECKED, BST_UNCHECKED, BST_CHECKED),
                                 };
-                                
-                                unsafe {
-                                    SendMessageW(dmm_radio, BM_SETCHECK, WPARAM(dmm_check.0 as _), None);
-                                    SendMessageW(steam_radio, BM_SETCHECK, WPARAM(steam_check.0 as _), None);
+
+                                if let Ok(btn) = unsafe { GetDlgItem(dialog, IDC_VERSION_DMM) } {
+                                    unsafe { SendMessageW(btn, BM_SETCHECK, WPARAM(dmm_check.0 as _), None) };
+                                }
+                                if let Ok(btn) = unsafe { GetDlgItem(dialog, IDC_VERSION_STEAM) } {
+                                    unsafe { SendMessageW(btn, BM_SETCHECK, WPARAM(steam_check.0 as _), None) };
+                                }
+                                if let Ok(btn) = unsafe { GetDlgItem(dialog, IDC_VERSION_STEAM_GLOBAL) } {
+                                    unsafe { SendMessageW(btn, BM_SETCHECK, WPARAM(steam_global_check.0 as _), None) };
                                 }
                             }
                         }
@@ -354,7 +425,18 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                         }
                     }
 
-                    update_target(dialog, unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() }, installer.target as _);
+                    refresh_all_target_labels(dialog);
+
+                    let new_default_target = if let Some(v) = installer.game_version() {
+                        match v {
+                            GameVersion::DMM => 0,
+                            GameVersion::Steam | GameVersion::SteamGlobal => 1,
+                        }
+                    } else {
+                        0
+                    };
+
+                    update_target(dialog, unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() }, new_default_target);
                 }
 
                 IDC_TARGET => {
@@ -396,6 +478,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                     let (is_running, exe_name) = match installer.game_version() {
                         Some(GameVersion::DMM) => (utils::is_specific_process_running("umamusume.exe"), "umamusume.exe"),
                         Some(GameVersion::Steam) => (utils::is_specific_process_running("UmamusumePrettyDerby_Jpn.exe"), "UmamusumePrettyDerby_Jpn.exe"),
+                        Some(GameVersion::SteamGlobal) => (utils::is_specific_process_running("UmamusumePrettyDerby.exe"), "UmamusumePrettyDerby.exe"),
                         None => (false, "the game")
                     };
 
@@ -422,6 +505,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             unsafe { MessageBoxW(dialog, &HSTRING::from(t!("gui.msg_install_fail", err = e.to_string())), &HSTRING::from(t!("gui.title")), MB_ICONERROR | MB_OK) };
                         }
                     }
+                    refresh_all_target_labels(dialog);
                     update_target(dialog, unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() }, installer.target as _);
                 }
 
@@ -431,6 +515,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                     let (is_running, exe_name) = match installer.game_version() {
                         Some(GameVersion::DMM) => (utils::is_specific_process_running("umamusume.exe"), "umamusume.exe"),
                         Some(GameVersion::Steam) => (utils::is_specific_process_running("UmamusumePrettyDerby_Jpn.exe"), "UmamusumePrettyDerby_Jpn.exe"),
+                        Some(GameVersion::SteamGlobal) => (utils::is_specific_process_running("UmamusumePrettyDerby.exe"), "UmamusumePrettyDerby.exe"),
                         None => (false, "the game")
                     };
 
@@ -460,11 +545,14 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             unsafe { MessageBoxW(dialog, &HSTRING::from(e.to_string()), &HSTRING::from(t!("gui.error")), MB_ICONERROR | MB_OK) };
                             return 0;
                         }
+
+                        refresh_all_target_labels(dialog);
                         update_target(dialog, unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() }, installer.target as _);
 
                         if let Some(version_info) = version_info_opt {
                             if !version_info.is_hachimi() {
                                 return 0;
+
                             }
 
                             // Check if the hachimi data dir exists and prompt user to delete it
@@ -474,7 +562,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             };
 
                             if metadata.is_dir() {
-                                let res = unsafe { 
+                                let res = unsafe {
                                     MessageBoxW(
                                         dialog,
                                         &HSTRING::from(t!("gui.delete_data_dir")),
@@ -493,13 +581,13 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                         }
                     }
                 }
-                
+
                 _ => return 0
             }
 
             1
         }
-        
+
         WM_CLOSE => {
             let _ = unsafe { KillTimer(dialog, ID_TIMER_GAMERUNNING) };
             unsafe { PostQuitMessage(0) };

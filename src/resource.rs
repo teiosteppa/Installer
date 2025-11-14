@@ -30,6 +30,7 @@ define_idc!(IDC_TARGRT, 1010);
 define_idc!(IDC_VERSION_STEAM, 1011);
 define_idc!(IDC_VERSION_DMM, 1012);
 define_idc!(IDC_VERSION_GROUP, 1013);
+define_idc!(IDC_VERSION_STEAM_GLOBAL, 1014);
 
 // Icons
 define_id!(IDI_HACHIMI, 107);

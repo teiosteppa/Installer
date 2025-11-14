@@ -12,12 +12,14 @@ use crate::utils::{self, get_system_directory};
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum GameVersion {
     DMM,
-    Steam
+    Steam,
+    SteamGlobal
 }
 
 pub struct Installer {
     dmm_install_dir: Option<PathBuf>,
     steam_install_dir: Option<PathBuf>,
+    steam_global_install_dir: Option<PathBuf>,
     install_dir: Option<PathBuf>,
     game_version: Option<GameVersion>,
 
@@ -33,6 +35,8 @@ impl Installer {
             Some(GameVersion::DMM)
         } else if dir.join("UmamusumePrettyDerby_Jpn.exe").is_file() {
             Some(GameVersion::Steam)
+        } else if dir.join("UmamusumePrettyDerby.exe").is_file() {
+            Some(GameVersion::SteamGlobal)
         } else {
             None
         }
@@ -42,6 +46,7 @@ impl Installer {
         Installer {
             dmm_install_dir: None,
             steam_install_dir: None,
+            steam_global_install_dir: None,
             install_dir: None,
             game_version: None,
             target,
@@ -59,6 +64,7 @@ impl Installer {
                 match version {
                     GameVersion::DMM => self.dmm_install_dir = Some(dir),
                     GameVersion::Steam => self.steam_install_dir = Some(dir),
+                    GameVersion::SteamGlobal => self.steam_global_install_dir = Some(dir),
                 }
                 Ok(())
             }
@@ -81,18 +87,24 @@ impl Installer {
         } else if let Some(steam_dir) = Self::detect_steam_install_dir() {
             self.install_dir = Some(steam_dir);
             self.game_version = Some(GameVersion::Steam);
+        } else if let Some(steam_global_dir) = Self::detect_steam_global_install_dir() {
+            self.install_dir = Some(steam_global_dir);
+            self.game_version = Some(GameVersion::SteamGlobal);
         }
     }
 
     pub fn detect_install_dirs(&mut self) {
         self.dmm_install_dir = Self::detect_dmm_install_dir();
         self.steam_install_dir = Self::detect_steam_install_dir();
+        self.steam_global_install_dir = Self::detect_steam_global_install_dir();
 
         if self.install_dir.is_none() {
             if self.dmm_install_dir.is_some() {
                 self.set_game_version(GameVersion::DMM);
             } else if self.steam_install_dir.is_some() {
                 self.set_game_version(GameVersion::Steam);
+            } else if self.steam_global_install_dir.is_some() {
+                self.set_game_version(GameVersion::SteamGlobal);
             }
         }
     }
@@ -105,11 +117,16 @@ impl Installer {
         self.steam_install_dir.as_ref()
     }
 
+    pub fn steam_global_install_dir(&self) -> Option<&PathBuf> {
+        self.steam_global_install_dir.as_ref()
+    }
+
     pub fn set_game_version(&mut self, version: GameVersion) -> Option<&PathBuf> {
         self.game_version = Some(version);
         match version {
             GameVersion::DMM => self.install_dir = self.dmm_install_dir.clone(),
             GameVersion::Steam => self.install_dir = self.steam_install_dir.clone(),
+            GameVersion::SteamGlobal => self.install_dir = self.steam_global_install_dir.clone(),
         }
         self.install_dir.as_ref()
     }
@@ -180,11 +197,32 @@ impl Installer {
         None
     }
 
+    fn detect_steam_global_install_dir() -> Option<PathBuf> {
+        const STEAM_APP_ID: u32 = 3224770;
+        const GAME_EXE_NAME: &str = "UmamusumePrettyDerby.exe";
+
+        if let Ok(steamdir) = SteamDir::locate() {
+            if let Ok(Some((app, library))) = steamdir.find_app(STEAM_APP_ID) {
+
+                let game_path = library.path()
+                    .join("steamapps")
+                    .join("common")
+                    .join(&app.install_dir);
+
+                if game_path.join(GAME_EXE_NAME).is_file() {
+                    return Some(game_path);
+                }
+            }
+        }
+
+        None
+    }
+
     fn get_install_method(&self, target: Target) -> InstallMethod {
         match target {
             Target::UnityPlayer => InstallMethod::DotLocal,
             Target::CriManaVpx => {
-                if self.game_version == Some(GameVersion::Steam) {
+                if self.game_version == Some(GameVersion::Steam) || self.game_version == Some(GameVersion::SteamGlobal) {
                     InstallMethod::Direct
                 } else {
                     InstallMethod::PluginShim
@@ -199,7 +237,8 @@ impl Installer {
             InstallMethod::DotLocal => {
                 let exe_name = match self.game_version {
                     Some(GameVersion::Steam) => "UmamusumePrettyDerby_Jpn.exe",
-                    _ => "umamusume.exe",
+                    Some(GameVersion::SteamGlobal) => "UmamusumePrettyDerby.exe",
+                    Some(GameVersion::DMM) | _ => "umamusume.exe",
                 };
                 let local_folder_name = format!("{}.local", exe_name);
                 install_dir.join(local_folder_name).join(p)
@@ -280,6 +319,66 @@ impl Installer {
         Ok(())
     }
 
+    fn check_and_prompt_steam_autoupdate(&self) -> Result<(), Error> {
+        if self.hwnd.is_none() {
+            return Ok(());
+        }
+
+        let (steam_app_id_str, install_dir) = match self.game_version {
+            Some(GameVersion::Steam) => ("3564400", self.install_dir.as_ref()),
+            _ => return Ok(()),
+        };
+
+        if let Some(install_dir) = install_dir {
+            if let Some(steamapps_path) = find_steamapps_folder(install_dir) {
+                let manifest_path = steamapps_path.join(format!("appmanifest_{}.acf", steam_app_id_str));
+                let backup_path = manifest_path.with_extension("acf.bak");
+
+                if !manifest_path.is_file() {
+                    return Ok(());
+                }
+
+                let Ok(content) = std::fs::read_to_string(&manifest_path) else { return Ok(()) };
+
+                if content.contains("\"AutoUpdateBehavior\"\t\t\"1\"") {
+                    return Ok(());
+                }
+
+                if backup_path.exists() {
+                    return Ok(());
+                }
+
+                let res = unsafe {
+                    MessageBoxW(
+                        self.hwnd.as_ref(),
+                        &HSTRING::from(t!("installer.steam_auto_update_recommendation_prompt")),
+                        &HSTRING::from(t!("installer.change_auto_update_setting")),
+                        MB_ICONQUESTION | MB_YESNO
+                    )
+                };
+
+                if res == IDYES {
+                    if !backup_path.exists() {
+                        std::fs::copy(&manifest_path, &backup_path)?;
+                    }
+                    let new_content = content.replace("\"AutoUpdateBehavior\"\t\t\"0\"", "\"AutoUpdateBehavior\"\t\t\"1\"");
+                    if std::fs::write(&manifest_path, new_content).is_ok() {
+                        unsafe {
+                            MessageBoxW(
+                                self.hwnd.as_ref(),
+                                &HSTRING::from(t!("installer.steam_auto_update_success_message")),
+                                &HSTRING::from(t!("installer.auto_update_setting_changed")),
+                                MB_ICONINFORMATION | MB_OK
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn install(&self) -> Result<(), Error> {
         let initial_dll_path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
 
@@ -299,6 +398,7 @@ impl Installer {
 
         match self.game_version {
             Some(GameVersion::DMM) => {},
+            Some(GameVersion::SteamGlobal) => {},
             Some(GameVersion::Steam) => {
                 let steam_exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
                 let backup_exe_path = steam_exe_path.with_extension("exe.bak");
@@ -357,56 +457,7 @@ impl Installer {
             }
         }
 
-        if self.hwnd.is_some() {
-            if let Some(GameVersion::Steam) = self.game_version &&
-               let Some(install_dir) = &self.install_dir &&
-               let Some(steamapps_path) = find_steamapps_folder(install_dir)
-            {
-                const STEAM_APP_ID: &str = "3564400";
-                let manifest_path = steamapps_path.join(format!("appmanifest_{}.acf", STEAM_APP_ID));
-                let backup_path = manifest_path.with_extension("acf.bak");
-
-                if !manifest_path.is_file() {
-                    return Ok(());
-                }
-                
-                let Ok(content) = std::fs::read_to_string(&manifest_path) else { return Ok(()) };
-
-                if content.contains("\"AutoUpdateBehavior\"\t\t\"1\"") {
-                    return Ok(());
-                }
-
-                if backup_path.exists() {
-                    return Ok(());
-                }
-
-                let res = unsafe {
-                    MessageBoxW(
-                        self.hwnd.as_ref(),
-                        &HSTRING::from(t!("installer.steam_auto_update_recommendation_prompt")),
-                        &HSTRING::from(t!("installer.change_auto_update_setting")),
-                        MB_ICONQUESTION | MB_YESNO
-                    )
-                };
-
-                if res == IDYES {
-                    if !backup_path.exists() {
-                        std::fs::copy(&manifest_path, &backup_path)?;
-                    }
-                    let new_content = content.replace("\"AutoUpdateBehavior\"\t\t\"0\"", "\"AutoUpdateBehavior\"\t\t\"1\"");
-                    if std::fs::write(&manifest_path, new_content).is_ok() {
-                        unsafe {
-                            MessageBoxW(
-                                self.hwnd.as_ref(),
-                                &HSTRING::from(t!("installer.steam_auto_update_success_message")),
-                                &HSTRING::from(t!("installer.auto_update_setting_changed")),
-                                MB_ICONINFORMATION | MB_OK
-                            );
-                        }
-                    }
-                }
-            }
-        }
+        self.check_and_prompt_steam_autoupdate()?;
 
         Ok(())
     }
@@ -488,42 +539,15 @@ impl Installer {
         Ok(())
     }
 
-    pub fn uninstall(&self) -> Result<(), Error> {
-        let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
-        std::fs::remove_file(&path)?;
+    fn check_and_prompt_restore_steam_autoupdate(&self) -> Result<(), Error> {
+        let (steam_app_id_str, install_dir) = match self.game_version {
+            Some(GameVersion::Steam) => ("3564400", self.install_dir.as_ref()),
+            _ => return Ok(()),
+        };
 
-        match self.get_install_method(self.target) {
-            InstallMethod::DotLocal => {
-                let parent = path.parent().unwrap();
-                // Also delete Cellar
-                _ = std::fs::remove_file(parent.join("apphelp.dll"));
-                // Only remove if its empty
-                _ = std::fs::remove_dir(parent);
-            },
-            InstallMethod::PluginShim => {
-                let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
-                let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
-                if !src_dll.exists() {
-                    std::fs::copy(&dest_dll, &src_dll)?;
-                    std::fs::remove_file(&dest_dll)?;
-                }
-            },
-            InstallMethod::Direct => {}
-        }
-
-        let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
-        let exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
-        let backup_path = exe_path.with_extension("exe.bak");
-
-        if backup_path.is_file() {
-            std::fs::remove_file(&exe_path)?;
-            std::fs::rename(&backup_path, &exe_path)?;
-        }
-
-        if let Some(install_dir) = &self.install_dir {
+        if let Some(install_dir) = install_dir {
             if let Some(steamapps_path) = find_steamapps_folder(install_dir) {
-                const STEAM_APP_ID: &str = "3564400";
-                let manifest_path = steamapps_path.join(format!("appmanifest_{}.acf", STEAM_APP_ID));
+                let manifest_path = steamapps_path.join(format!("appmanifest_{}.acf", steam_app_id_str));
                 let backup_path = manifest_path.with_extension("acf.bak");
 
                 if backup_path.is_file() {
@@ -561,6 +585,45 @@ impl Installer {
                 }
             }
         }
+        Ok(())
+    }
+
+    pub fn uninstall(&self) -> Result<(), Error> {
+        let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
+        std::fs::remove_file(&path)?;
+
+        match self.get_install_method(self.target) {
+            InstallMethod::DotLocal => {
+                let parent = path.parent().unwrap();
+                // Also delete Cellar
+                _ = std::fs::remove_file(parent.join("apphelp.dll"));
+                // Only remove if its empty
+                _ = std::fs::remove_dir(parent);
+            },
+            InstallMethod::PluginShim => {
+                let dest_dll = self.get_dest_plugin_path().ok_or(Error::NoInstallDir)?;
+                let src_dll = self.get_src_plugin_path().ok_or(Error::NoInstallDir)?;
+                if !src_dll.exists() {
+                    std::fs::copy(&dest_dll, &src_dll)?;
+                    std::fs::remove_file(&dest_dll)?;
+                }
+            },
+            InstallMethod::Direct => {}
+        }
+
+        if self.game_version == Some(GameVersion::Steam) {
+            let install_path = self.install_dir.as_ref().ok_or(Error::NoInstallDir)?;
+            let exe_path = install_path.join("UmamusumePrettyDerby_Jpn.exe");
+            let backup_path = exe_path.with_extension("exe.bak");
+
+            if backup_path.is_file() {
+                std::fs::remove_file(&exe_path)?;
+                std::fs::rename(&backup_path, &exe_path)?;
+            }
+        }
+
+        self.check_and_prompt_restore_steam_autoupdate()?;
+
         Ok(())
     }
 
