@@ -10,7 +10,7 @@ gui:
   game_version: "Game Version"
   steam_jp: "Steam (Japan)"
   steam_global: "Steam (Global)"
-  update_success_body: "Successfully updated to the latest nightly build (from %{date}).\n\nPlease restart the application to use the new version."
+  update_success_body: "Successfully updated to the latest stable build (from %{date}).\n\nPlease restart the application to use the new version."
   update_successful: "Update Successful"
   update_error_body: "Failed to check for updates:\n\n%{error}"
   update_error: "Update Error"
