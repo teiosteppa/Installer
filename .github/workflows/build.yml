@@ -92,16 +92,16 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -fa nightly -m "Nightly Build from commit ${{ github.sha }}"
-          git push origin nightly --force
+          git tag -fa stable -m "Stable Build from commit ${{ github.sha }}"
+          git push origin stable --force
         shell: bash
 
-      - name: Upload Asset to Nightly Release
+      - name: Upload Asset to Stable Release
         if: github.ref == 'refs/heads/main'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: target/release/${{ env.ARTIFACT_NAME }}
-          tag: nightly
+          tag: stable
           overwrite: true
-          body: "Latest nightly build from commit `${{ github.sha }}`"
+          body: "Latest stable build from commit `${{ github.sha }}`"
