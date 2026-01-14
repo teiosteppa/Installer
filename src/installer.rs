@@ -14,6 +14,9 @@ use crate::utils::{self};
 #[cfg(feature = "net_install")]
 type DownloadResult = Result<Bytes, reqwest::Error>;
 
+pub const GLOBAL_STEAM_ID: u32 = 3224770;
+pub const JP_STEAM_ID: u32 = 3564400;
+
 pub struct Installer {
     pub install_dir: Option<PathBuf>,
     pub target: Target,
@@ -24,7 +27,6 @@ pub struct Installer {
     #[cfg(feature = "net_install")]
     pub hachimi_version: Arc<Mutex<Option<String>>>
 }
-
 
 pub fn detect_dmm_install_dir() -> Option<PathBuf> {
     let app_data_dir_wstr = unsafe { SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_DEFAULT, None).ok()? };
@@ -71,10 +73,10 @@ pub fn detect_dmm_install_dir() -> Option<PathBuf> {
     None
 }
 
-pub fn detect_steam_install_dir() -> Option<PathBuf> {
+pub fn detect_steam_install_dir(app_id: u32) -> Option<PathBuf> {
     let steam_dir = SteamDir::locate().ok()?;
     let (uma_musume_steamapp, _lib) = steam_dir
-        .find_app(3564400)
+        .find_app(app_id)
         .ok()??;
     let game_path = _lib.resolve_app_dir(&uma_musume_steamapp);
     if game_path.is_dir() { return Some(game_path) };
@@ -96,9 +98,10 @@ impl Installer {
     }
 
     pub fn detect_install_dir(target: Target) -> Option<PathBuf> {
-        match TargetType::from(target) {
-            TargetType::DotLocal => detect_dmm_install_dir(),
-            TargetType::Direct => detect_steam_install_dir(),
+        match target {
+            Target::UnityPlayer => detect_dmm_install_dir(),
+            Target::CriManaVpx => detect_steam_install_dir(JP_STEAM_ID),
+            Target::CriManaVpxGlobal => detect_steam_install_dir(GLOBAL_STEAM_ID),
         }
     }
 
@@ -143,7 +146,8 @@ impl Installer {
     pub fn get_target_display_label(&self, target: Target) -> String {
         let platform = match target {
             Target::UnityPlayer => "DMM",
-            Target::CriManaVpx => "Steam",
+            Target::CriManaVpx => "Steam (JP)",
+            Target::CriManaVpxGlobal => "Steam (Global)",
         };
 
         if let Some(version_info) = self.get_target_version_info(target) {
@@ -183,16 +187,19 @@ impl Installer {
     }
 
     pub fn pre_install(&self) -> Result<(), Error> {
-        if TargetType::from(self.target) == TargetType::Direct {
-            //something exe idk
-            let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
-            let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
+        match self.target {
+            Target::CriManaVpx => {
+                //something exe idk
+                let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
+                let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
 
-            // back up exe if not existing, don't overwrite if it's already there
-            if !backup_exe.exists() {
-                std::fs::copy(&orig_exe, &backup_exe)?;
+                // back up exe if not existing, don't overwrite if it's already there
+                if !backup_exe.exists() {
+                    std::fs::copy(&orig_exe, &backup_exe)?;
+                }
             }
-        }
+            _ => {}
+        };
 
         Ok(())
     }
@@ -241,8 +248,8 @@ impl Installer {
     // no .local redirection necessary on steam client, so dropped that, wheee
     // greetz to uma on mac / linux
     pub fn post_install(&self) -> Result<(), Error> {
-        match TargetType::from(self.target) {
-            TargetType::DotLocal => {
+        match self.target {
+            Target::UnityPlayer => {
                 // Install Cellar
                 let path = self.install_dir.as_ref()
                     .ok_or_else(|| Error::NoInstallDir)?
@@ -302,7 +309,7 @@ impl Installer {
                     }
                 }
             },
-            TargetType::Direct => {
+            Target::CriManaVpx => {
                 // compatibility: delete dotlocal DLL redir if exists
                 if self.install_dir.as_ref().unwrap().join("UmamusumePrettyDerby_Jpn.exe.local").exists() {
                     std::fs::remove_dir_all(self.install_dir.as_ref().unwrap().join("UmamusumePrettyDerby_Jpn.exe.local"))?;
@@ -331,6 +338,8 @@ impl Installer {
                 patched_exe.write(&patched_bytes)?;
                 std::fs::rename(&exe_path.with_extension("exe.tmp"), &exe_path)?;
             }
+            // cri_mana_vpx install on global doesn't require bin patch
+            _ => {}
         }
 
         Ok(())
@@ -340,8 +349,8 @@ impl Installer {
         let path = self.get_current_target_path().ok_or(Error::NoInstallDir)?;
         std::fs::remove_file(&path)?;
 
-        match TargetType::from(self.target) {
-            TargetType::DotLocal => {
+        match self.target {
+            Target::UnityPlayer => {
                 let parent = path.parent().unwrap();
 
                 // Also delete Cellar
@@ -350,7 +359,7 @@ impl Installer {
                 // Only remove if its empty
                 _ = std::fs::remove_dir(parent);
             },
-            TargetType::Direct => {
+            Target::CriManaVpx => {
                 let backup_exe = self.get_backup_exe_path().ok_or(Error::NoInstallDir)?;
                 let orig_exe = self.get_orig_exe_path().ok_or(Error::NoInstallDir)?;
                 if backup_exe.exists() {
@@ -359,6 +368,7 @@ impl Installer {
                     return Err(Error::FailedToRestore);
                 }
             }
+            _ => {}
         }
 
         Ok(())
@@ -394,31 +404,36 @@ impl Default for Installer {
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Target {
     UnityPlayer,
-    CriManaVpx
+    CriManaVpx,
+    CriManaVpxGlobal
 }
 
 impl Target {
     pub const VALUES: &[Self] = &[
         Self::UnityPlayer,
-        Self::CriManaVpx
+        Self::CriManaVpx,
+        Self::CriManaVpxGlobal
     ];
 
     pub fn dll_name(&self) -> &'static str {
         match self {
             Self::UnityPlayer => "UnityPlayer.dll",
-            Self::CriManaVpx => "cri_mana_vpx.dll"
+            Self::CriManaVpx => "cri_mana_vpx.dll",
+            Self::CriManaVpxGlobal => "cri_mana_vpx.dll"
         }
     }
 }
 
 impl Default for Target {
     // default to whatever target is detected
-    // if both, default to dmm
+    // default to dmm, and prioritize jp steam over globe
     fn default() -> Self {
         if detect_dmm_install_dir().is_some() {
             Self::UnityPlayer
-        } else if detect_steam_install_dir().is_some() {
+        } else if detect_steam_install_dir(JP_STEAM_ID).is_some() {
             Self::CriManaVpx
+        } else if detect_steam_install_dir(GLOBAL_STEAM_ID).is_some() {
+            Self::CriManaVpxGlobal
         } else {
             Self::UnityPlayer
         }
@@ -436,6 +451,7 @@ impl From<Target> for TargetType {
         match value {
             Target::UnityPlayer => Self::DotLocal,
             Target::CriManaVpx => Self::Direct,
+            Target::CriManaVpxGlobal => Self::Direct,
         }
     }
 }

@@ -198,9 +198,12 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
 
             // Init targets
             let target_combo = GetDlgItem(dialog, IDC_TARGET).unwrap();
-            let dmm_default = installer::detect_dmm_install_dir().is_some();
-            let steam_default = installer::detect_steam_install_dir().is_some();
-            let installed_count = [dmm_default, steam_default].iter().filter(|&&x| x).count();
+            let detected_targets = [
+                installer::detect_dmm_install_dir().is_some(),
+                installer::detect_steam_install_dir(installer::JP_STEAM_ID).is_some(),
+                installer::detect_steam_install_dir(installer::GLOBAL_STEAM_ID).is_some(),
+            ];
+            let installed_count = detected_targets.iter().filter(|&&x| x).count();
 
             for target in installer::Target::VALUES {
                 let label = installer.get_target_display_label(*target);
