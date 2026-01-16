@@ -271,6 +271,10 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                     let install_path_edit = GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap();
                     _ = SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap()));
 
+                    if let Some(target) = installer::detect_target_from_path(&path) {
+                        installer.target = target;
+                    }
+
                     installer.install_dir = Some(path);
                     update_target(dialog, GetDlgItem(dialog, IDC_TARGET).unwrap(), installer.target as _);
                 }
