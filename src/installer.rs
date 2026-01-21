@@ -83,6 +83,22 @@ pub fn detect_steam_install_dir(app_id: u32) -> Option<PathBuf> {
     None
 }
 
+pub fn detect_target_from_path(path: &Path) -> Option<Target> {
+    if path.join("umamusume.exe").exists() {
+        return Some(Target::UnityPlayer);
+    }
+
+    if path.join("UmamusumePrettyDerby_Jpn.exe").exists() {
+        return Some(Target::CriManaVpx);
+    }
+
+    if path.join("UmamusumePrettyDerby.exe").exists() {
+        return Some(Target::CriManaVpxGlobal);
+    }
+
+    None
+}
+
 impl Installer {
     pub fn custom(install_dir: Option<PathBuf>, target: Target, custom_target: Option<String>) -> Installer {
         Installer {
