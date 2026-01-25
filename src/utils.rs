@@ -2,7 +2,7 @@ use std::{ffi::CStr, path::{Path, PathBuf}};
 use crate::i18n::{t};
 use pelite::resources::version_info::VersionInfo;
 use windows::{
-    core::HSTRING,
+    core::{w, HSTRING},
     Win32::{
         Foundation::{HWND, RECT},
         System::{
@@ -15,9 +15,9 @@ use windows::{
         UI::{
             Shell::{
                 FileOpenDialog, IFileOpenDialog, IShellItem, SHCreateItemFromParsingName,
-                FOS_FILEMUSTEXIST, FOS_PICKFOLDERS, SIGDN_FILESYSPATH,
+                FOS_FILEMUSTEXIST, FOS_PICKFOLDERS, SIGDN_FILESYSPATH, ShellExecuteW,
             },
-            WindowsAndMessaging::{GetDesktopWindow, GetWindowRect, SetWindowPos, SWP_NOSIZE},
+            WindowsAndMessaging::{GetDesktopWindow, GetWindowRect, SetWindowPos, SWP_NOSIZE, SW_SHOW},
         },
     },
 };
@@ -105,4 +105,24 @@ pub fn is_game_running() -> bool {
     }
 
     false
+}
+
+pub fn run_as_admin(args: &str) -> Result<(), windows::core::Error> {
+    let exe_path = std::env::current_exe().map_err(|_| windows::core::Error::from_win32())?;
+    let exe_path_hstring = HSTRING::from(exe_path.as_path());
+    let verb = w!("runas");
+    let args_hstring = HSTRING::from(args);
+
+    unsafe {
+        ShellExecuteW(
+            None,
+            verb,
+            &exe_path_hstring,
+            &args_hstring,
+            None,
+            SW_SHOW
+        );
+    }
+    
+    Ok(())
 }

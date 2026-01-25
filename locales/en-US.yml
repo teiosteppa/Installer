@@ -45,4 +45,5 @@ error:
   cannot_find_target: "Cannot find target DLL in specified install location"
   io_error: "I/O error: %{error}"
   registry_value_error: "Registry value error: %{error}"
+  registry_key_error: "Registry key error: %{error}"
   failed_to_restore: "Failed to restore backup. You might need to validate your game files."

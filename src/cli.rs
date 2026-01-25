@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::i18n::{t};
 use windows::{
-    core::{w, HSTRING},
+    core::HSTRING,
     Win32::UI::{
         Shell::ShellExecuteW,
         WindowsAndMessaging::{MessageBoxW, IDCANCEL, MB_ICONERROR, MB_ICONINFORMATION, MB_OK, MB_OKCANCEL, SW_NORMAL}
@@ -22,7 +22,8 @@ struct Args {
     launch_game: bool,
     game_args: Vec<String>,
     pre_install: bool,
-    post_install: bool
+    post_install: bool,
+    enable_ifeo: bool
 }
 
 enum Command {
@@ -73,6 +74,7 @@ impl Args {
                 "--launch-game" => args.launch_game = true,
                 "--pre-install" => args.pre_install = true,
                 "--post-install" => args.post_install = true,
+                "--enable-ifeo" => args.enable_ifeo = true,
                 "--" => in_game_args = true,
 
                 _ => {
@@ -88,7 +90,17 @@ impl Args {
 
 pub fn run() -> Result<bool, installer::Error> {
     let mut args = Args::parse();
-    
+
+    if args.enable_ifeo {
+        match Installer::enable_ifeo() {
+            Ok(_) => return Ok(true),
+            Err(e) => {
+                unsafe { MessageBoxW(None, &HSTRING::from(e.to_string()), &HSTRING::from(t!("cli.installer_title")), MB_ICONERROR | MB_OK); }
+                return Err(e);
+            }
+        }
+    }
+
     if let Some(command) = args.command {
         if let Some(sleep) = args.sleep {
             std::thread::sleep(std::time::Duration::from_millis(sleep));
@@ -160,7 +172,7 @@ pub fn run() -> Result<bool, installer::Error> {
             Command::Uninstall => installer.uninstall()
         };
         if let Err(e) = res {
-            unsafe { MessageBoxW(None, &HSTRING::from(e.to_string()), w!("Hachimi Installer"), MB_ICONERROR | MB_OK); }
+            unsafe { MessageBoxW(None, &HSTRING::from(e.to_string()), &HSTRING::from(t!("cli.installer_title")), MB_ICONERROR | MB_OK); }
             return Err(e);
         }
 
