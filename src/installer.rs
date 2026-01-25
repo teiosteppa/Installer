@@ -261,6 +261,15 @@ impl Installer {
         Ok(())
     }
 
+    pub fn enable_ifeo() -> Result<(), Error> {
+        let regkey = Hive::LocalMachine.open(
+            r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options",
+            registry::Security::Write | registry::Security::SetValue
+        )?;
+        regkey.set_value("DevOverrideEnable", &registry::Data::U32(1))?;
+        Ok(())
+    }
+
     // no .local redirection necessary on steam client, so dropped that, wheee
     // greetz to uma on mac / linux
     pub fn post_install(&self) -> Result<(), Error> {
@@ -283,7 +292,7 @@ impl Installer {
                 // Check for DLL redirection
                 match Hive::LocalMachine.open(
                     r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options",
-                    registry::Security::Read | registry::Security::SetValue
+                    registry::Security::Read
                 ) {
                     Ok(regkey) => {
                         if regkey.value("DevOverrideEnable")
@@ -303,14 +312,26 @@ impl Installer {
                                 )
                             };
                             if res == IDOK {
-                                regkey.set_value("DevOverrideEnable", &registry::Data::U32(1))?;
-                                unsafe {
-                                    MessageBoxW(
-                                        self.hwnd.lock().unwrap().as_ref(),
-                                        &HSTRING::from(t!("installer.restart_to_apply")),
-                                        &HSTRING::from(t!("installer.dll_redirection_enabled")),
-                                        MB_ICONINFORMATION | MB_OK
-                                    );
+                                if let Err(_) = Self::enable_ifeo() {
+                                    if let Ok(_) = utils::run_as_admin("--enable-ifeo") {
+                                        unsafe {
+                                            MessageBoxW(
+                                                self.hwnd.lock().unwrap().as_ref(),
+                                                &HSTRING::from(t!("installer.restart_to_apply")),
+                                                &HSTRING::from(t!("installer.dll_redirection_enabled")),
+                                                MB_ICONINFORMATION | MB_OK
+                                            );
+                                        }
+                                    }
+                                } else {
+                                    unsafe {
+                                        MessageBoxW(
+                                            self.hwnd.lock().unwrap().as_ref(),
+                                            &HSTRING::from(t!("installer.restart_to_apply")),
+                                            &HSTRING::from(t!("installer.dll_redirection_enabled")),
+                                            MB_ICONINFORMATION | MB_OK
+                                        );
+                                    }
                                 }
                             }
                         }
@@ -492,6 +513,7 @@ pub enum Error {
     NoInstallDir,
     IoError(std::io::Error),
     RegistryValueError(registry::value::Error),
+    RegistryKeyError(registry::key::Error),
     FailedToRestore,
     #[cfg(feature = "net_install")]
     ReqwestError(reqwest::Error),
@@ -507,6 +529,7 @@ impl std::fmt::Display for Error {
             Error::NoInstallDir => write!(f, "{}", t!("error.no_install_dir")),
             Error::IoError(e) => write!(f, "{}", t!("error.io_error", error = e)),
             Error::RegistryValueError(e) => write!(f, "{}", t!("error.registry_value_error", error = e)),
+            Error::RegistryKeyError(e) => write!(f, "{}", t!("error.registry_key_error", error = e)),
             Error::FailedToRestore => write!(f, "{}", t!("error.failed_to_restore")),
             #[cfg(feature = "net_install")]
             Error::ReqwestError(e) => write!(f, "Download error: {}", e),
@@ -527,6 +550,12 @@ impl From<std::io::Error> for Error {
 impl From<registry::value::Error> for Error {
     fn from(e: registry::value::Error) -> Self {
         Error::RegistryValueError(e)
+    }
+}
+
+impl From<registry::key::Error> for Error {
+    fn from(e: registry::key::Error) -> Self {
+        Error::RegistryKeyError(e)
     }
 }
 
