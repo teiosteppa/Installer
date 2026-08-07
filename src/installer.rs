@@ -17,6 +17,7 @@ type DownloadResult = Result<Bytes, reqwest::Error>;
 pub const GLOBAL_STEAM_ID: u32 = 3224770;
 pub const JP_STEAM_ID: u32 = 3564400;
 
+const KOMOE_REG_KEY: &str = r"Software\komoemumamusume";
 const DEVOVERRIDE_KEY: &str = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options";
 
 // separate out read check cus it doesnt require admin privileges
@@ -152,6 +153,19 @@ pub fn detect_dmm_install_dir() -> Option<PathBuf> {
     None
 }
 
+pub fn detect_komoe_install_dir() -> Option<PathBuf> {
+    match Hive::CurrentUser.open(KOMOE_REG_KEY, registry::Security::Read) {
+        Ok(regkey) => {
+            match regkey.value("GameInstallPath") {
+                // REG_SZ
+                Ok(registry::Data::String(v)) => Some(PathBuf::from(v.to_os_string())),
+                _ => None
+            }
+        },
+        Err(_) => None
+    }
+}
+
 pub fn detect_steam_install_dir(app_id: u32) -> Option<PathBuf> {
     let steam_dir = SteamDir::locate().ok()?;
     let (uma_musume_steamapp, _lib) = steam_dir
@@ -173,6 +187,10 @@ pub fn detect_target_from_path(path: &Path) -> Option<Target> {
 
     if path.join("UmamusumePrettyDerby.exe").exists() {
         return Some(Target::CriManaVpxGlobal);
+    }
+
+    if path.join("komoeumamusume.exe").exists() {
+        return Some(Target::CriManaVpxKomoe);
     }
 
     None
@@ -197,6 +215,7 @@ impl Installer {
             Target::UnityPlayer => detect_dmm_install_dir(),
             Target::CriManaVpx => detect_steam_install_dir(JP_STEAM_ID),
             Target::CriManaVpxGlobal => detect_steam_install_dir(GLOBAL_STEAM_ID),
+            Target::CriManaVpxKomoe => detect_komoe_install_dir(),
         }
     }
 
@@ -243,6 +262,7 @@ impl Installer {
             Target::UnityPlayer => "DMM",
             Target::CriManaVpx => "Steam (JP)",
             Target::CriManaVpxGlobal => "Steam (Global)",
+            Target::CriManaVpxKomoe => "KOMOE Game",
         };
 
         if let Some(version_info) = self.get_target_version_info(target) {
@@ -471,21 +491,24 @@ impl Default for Installer {
 pub enum Target {
     UnityPlayer,
     CriManaVpx,
-    CriManaVpxGlobal
+    CriManaVpxGlobal,
+    CriManaVpxKomoe
 }
 
 impl Target {
     pub const VALUES: &[Self] = &[
         Self::UnityPlayer,
         Self::CriManaVpx,
-        Self::CriManaVpxGlobal
+        Self::CriManaVpxGlobal,
+        Self::CriManaVpxKomoe
     ];
 
     pub fn dll_name(&self) -> &'static str {
         match self {
             Self::UnityPlayer => "UnityPlayer.dll",
             Self::CriManaVpx => "cri_mana_vpx.dll",
-            Self::CriManaVpxGlobal => "cri_mana_vpx.dll"
+            Self::CriManaVpxGlobal => "cri_mana_vpx.dll",
+            Self::CriManaVpxKomoe => "cri_mana_vpx.dll"
         }
     }
 }
@@ -500,6 +523,8 @@ impl Default for Target {
             Self::CriManaVpx
         } else if detect_steam_install_dir(GLOBAL_STEAM_ID).is_some() {
             Self::CriManaVpxGlobal
+        } else if detect_komoe_install_dir().is_some() {
+            Self::CriManaVpxKomoe
         } else {
             Self::UnityPlayer
         }
@@ -518,6 +543,7 @@ impl From<Target> for TargetType {
             Target::UnityPlayer => Self::DotLocal,
             Target::CriManaVpx => Self::Direct,
             Target::CriManaVpxGlobal => Self::Direct,
+            Target::CriManaVpxKomoe => Self::Direct,
         }
     }
 }

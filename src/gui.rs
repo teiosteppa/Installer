@@ -202,6 +202,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                 installer::detect_dmm_install_dir().is_some(),
                 installer::detect_steam_install_dir(installer::JP_STEAM_ID).is_some(),
                 installer::detect_steam_install_dir(installer::GLOBAL_STEAM_ID).is_some(),
+                installer::detect_komoe_install_dir().is_some(),
             ];
             let installed_count = detected_targets.iter().filter(|&&x| x).count();
 
