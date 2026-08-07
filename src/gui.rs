@@ -17,7 +17,8 @@ use windows::{core::{HSTRING}, Win32::{
     }},
 }};
 
-unsafe fn localize_controls(dialog: HWND) {
+fn localize_controls(dialog: HWND) {
+    unsafe {
         // Title
         _ = SetWindowTextW(dialog, &HSTRING::from(t!("gui.title")));
         // Button / Tag
@@ -28,6 +29,7 @@ unsafe fn localize_controls(dialog: HWND) {
         _ = SetWindowTextW(GetDlgItem(dialog, IDC_PACKAGED_VER).unwrap(), &HSTRING::from(t!("gui.packaged_ver", ver = env!("HACHIMI_VERSION"))));
         _ = SetWindowTextW(GetDlgItem(dialog, IDC_INSTALL_LOCATION).unwrap(), &HSTRING::from(t!("gui.install_location")));
         _ = SetWindowTextW(GetDlgItem(dialog, IDC_TARGRT).unwrap(), &HSTRING::from(t!("gui.target")));
+    }
 }
 
 pub fn run() -> Result<(), windows::core::Error> {
@@ -140,34 +142,40 @@ fn update_target(dialog: HWND, target_combo: HWND, index: usize) {
     installer.target = target;
 }
 
-unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> isize {
+extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> isize {
     match message {
         WM_INITDIALOG => {
             // Set the installer ptr
-            SetWindowLongPtrW(dialog, GWLP_USERDATA, lparam.0);
+            unsafe { SetWindowLongPtrW(dialog, GWLP_USERDATA, lparam.0); }
             let installer = unsafe { (lparam.0 as *mut Installer).as_ref().unwrap() };
 
             // Set icon
             let instance = unsafe { GetModuleHandleW(None).unwrap() };
-            if let Ok(icon) = LoadIconW(instance, IDI_HACHIMI) {
-                SendMessageW(dialog, WM_SETICON, WPARAM(ICON_BIG as _), LPARAM(icon.0 as _));
-                _ = DestroyIcon(icon);
+            unsafe {
+                if let Ok(icon) = LoadIconW(instance, IDI_HACHIMI) {
+                    SendMessageW(dialog, WM_SETICON, WPARAM(ICON_BIG as _), LPARAM(icon.0 as _));
+                    _ = DestroyIcon(icon);
+                }
             }
 
             // Set install path
             if let Some(path) = &installer.install_dir {
-                let install_path_edit = GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap();
-                _ = SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap()));
+                unsafe {
+                    let install_path_edit = GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap();
+                    _ = SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap()));
+                }
             }
 
             // Set packaged version
             #[cfg(not(feature = "net_install"))]
             {
-                let packaged_ver_static = GetDlgItem(dialog, IDC_PACKAGED_VER).unwrap();
-                _ = SetWindowTextW(
-                    packaged_ver_static,
-                    &HSTRING::from(t!("gui.packaged_ver", ver = env!("HACHIMI_VERSION")))
-                );
+                unsafe {
+                    let packaged_ver_static = GetDlgItem(dialog, IDC_PACKAGED_VER).unwrap();
+                    _ = SetWindowTextW(
+                        packaged_ver_static,
+                        &HSTRING::from(t!("gui.packaged_ver", ver = env!("HACHIMI_VERSION")))
+                    );
+                }
             }
             #[cfg(feature = "net_install")]
             {
@@ -182,54 +190,60 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
             localize_controls(dialog);
 
             // Init language combo
-            let lang_combo = GetDlgItem(dialog, IDC_LANGUAGE_COMBO).unwrap();
-            for (idx, (_, _, gui_label)) in SUPPORTED_LOCALES.iter().enumerate() {
-                SendMessageW(
-                    lang_combo, CB_ADDSTRING, None,
-                    LPARAM(HSTRING::from(*gui_label).as_ptr() as _));
-                if SUPPORTED_LOCALES[idx].0 == *i18n::CURRENT_LOCALE.lock().unwrap() {
-                    SendMessageW(lang_combo, CB_SETCURSEL, WPARAM(idx), None);
+            unsafe {
+                let lang_combo = GetDlgItem(dialog, IDC_LANGUAGE_COMBO).unwrap();
+                for (idx, (_, _, gui_label)) in SUPPORTED_LOCALES.iter().enumerate() {
+                    SendMessageW(
+                        lang_combo, CB_ADDSTRING, None,
+                        LPARAM(HSTRING::from(*gui_label).as_ptr() as _));
+                    if SUPPORTED_LOCALES[idx].0 == *i18n::CURRENT_LOCALE.lock().unwrap() {
+                        SendMessageW(lang_combo, CB_SETCURSEL, WPARAM(idx), None);
+                    }
                 }
-            }
 
-            let cur = i18n::CURRENT_LOCALE.lock().unwrap().clone();
-            let idx = if cur == "zh-CN" { 1 } else { 0 };
-            SendMessageW(lang_combo, CB_SETCURSEL, WPARAM(idx), None);
+                let cur = i18n::CURRENT_LOCALE.lock().unwrap().clone();
+                let idx = if cur == "zh-CN" { 1 } else { 0 };
+                SendMessageW(lang_combo, CB_SETCURSEL, WPARAM(idx), None);
+            }
 
             // Init targets
-            let target_combo = GetDlgItem(dialog, IDC_TARGET).unwrap();
-            let detected_targets = [
-                installer::detect_dmm_install_dir().is_some(),
-                installer::detect_steam_install_dir(installer::JP_STEAM_ID).is_some(),
-                installer::detect_steam_install_dir(installer::GLOBAL_STEAM_ID).is_some(),
-                installer::detect_komoe_install_dir().is_some(),
-            ];
-            let installed_count = detected_targets.iter().filter(|&&x| x).count();
+            unsafe {
+                let target_combo = GetDlgItem(dialog, IDC_TARGET).unwrap();
+                let detected_targets = [
+                    installer::detect_dmm_install_dir().is_some(),
+                    installer::detect_steam_install_dir(installer::JP_STEAM_ID).is_some(),
+                    installer::detect_steam_install_dir(installer::GLOBAL_STEAM_ID).is_some(),
+                    installer::detect_komoe_install_dir().is_some(),
+                ];
+                let installed_count = detected_targets.iter().filter(|&&x| x).count();
 
-            for target in installer::Target::VALUES {
-                let label = installer.get_target_display_label(*target);
-                SendMessageW(
-                    target_combo, CB_ADDSTRING, None, LPARAM(HSTRING::from(label).as_ptr() as _)
-                );
-            }
+                for target in installer::Target::VALUES {
+                    let label = installer.get_target_display_label(*target);
+                    SendMessageW(
+                        target_combo, CB_ADDSTRING, None, LPARAM(HSTRING::from(label).as_ptr() as _)
+                    );
+                }
 
-            let default_target_enum = installer::Target::default();
-            let default_target_idx = installer::Target::VALUES.iter().position(|&t| t == default_target_enum).unwrap_or(0);
+                let default_target_enum = installer::Target::default();
+                let default_target_idx = installer::Target::VALUES.iter().position(|&t| t == default_target_enum).unwrap_or(0);
 
-            update_target(dialog, target_combo, default_target_idx);
+                update_target(dialog, target_combo, default_target_idx);
 
-            if installed_count == 1 {
-                let _ = EnableWindow(target_combo, false);
+                if installed_count == 1 {
+                    let _ = EnableWindow(target_combo, false);
+                }
             }
 
             // Show notice if install dir is not detected
             if installer.install_dir.is_none() {
-                MessageBoxW(
-                    dialog,
-                    &HSTRING::from(t!("gui.warning_no_dir")),
-                    &HSTRING::from(t!("gui.warning")),
-                    MB_ICONWARNING | MB_OK
-                );
+                unsafe {
+                    MessageBoxW(
+                        dialog,
+                        &HSTRING::from(t!("gui.warning_no_dir")),
+                        &HSTRING::from(t!("gui.warning")),
+                        MB_ICONWARNING | MB_OK
+                    );
+                }
             }
 
             // Show notice for multiple installs
@@ -253,12 +267,14 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
 
             match control_id {
                 IDC_LANGUAGE_COMBO if ncode == CBN_SELCHANGE => {
-                    let combo = GetDlgItem(dialog, IDC_LANGUAGE_COMBO).unwrap();
-                    let idx   = SendMessageW(combo, CB_GETCURSEL, WPARAM(0), LPARAM(0)).0 as usize;
-                    i18n::set_locale(SUPPORTED_LOCALES[idx].0);
-                    localize_controls(dialog);
-                    update_target(dialog, GetDlgItem(dialog, IDC_TARGET).unwrap(),
+                    update_target(dialog, unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() },
                                   get_installer(dialog).target as _);
+                    unsafe {
+                        let combo = GetDlgItem(dialog, IDC_LANGUAGE_COMBO).unwrap();
+                        let idx   = SendMessageW(combo, CB_GETCURSEL, WPARAM(0), LPARAM(0)).0 as usize;
+                        i18n::set_locale(SUPPORTED_LOCALES[idx].0);
+                    }
+                    localize_controls(dialog);
                 }
                 IDC_INSTALL_PATH_BROWSE => {
                     let installer = get_installer(dialog);
@@ -269,23 +285,27 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                         return 1;
                     };
 
-                    let install_path_edit = GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap();
-                    _ = SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap()));
+                    unsafe {
+                        let install_path_edit = GetDlgItem(dialog, IDC_INSTALL_PATH).unwrap();
+                        _ = SetWindowTextW(install_path_edit, &HSTRING::from(path.to_str().unwrap()));
+                    }
 
                     if let Some(target) = installer::detect_target_from_path(&path) {
                         installer.target = target;
                     }
 
                     installer.install_dir = Some(path);
-                    update_target(dialog, GetDlgItem(dialog, IDC_TARGET).unwrap(), installer.target as _);
+                    update_target(dialog, unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() }, installer.target as _);
                 }
 
                 IDC_TARGET => {
                     if notif_code == CBN_SELCHANGE {
                         let installer = get_installer(dialog);
                         installer.install_dir = None;
-                        let res = SendMessageW(control, CB_GETCURSEL, None, None);
-                        update_target(dialog, control, res.0 as _);
+                        unsafe {
+                            let res = SendMessageW(control, CB_GETCURSEL, None, None);
+                            update_target(dialog, control, res.0 as _);
+                        }
                     }
                 }
 
@@ -293,72 +313,86 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                     let installer = get_installer(dialog);
                     if let Some(target) = installer.get_hachimi_installed_target() {
                         if target != installer.target {
-                            MessageBoxW(
-                                dialog,
-                                &HSTRING::from(t!("gui.already_installed", dll = target.dll_name())),
-                                &HSTRING::from(t!("gui.error")),
+                            unsafe {
+                                MessageBoxW(
+                                    dialog,
+                                    &HSTRING::from(t!("gui.already_installed", dll = target.dll_name())),
+                                    &HSTRING::from(t!("gui.error")),
 
-                                MB_ICONERROR | MB_OK
-                            );
+                                    MB_ICONERROR | MB_OK
+                                );
+                            }
                             return 0;
                         }
                     }
                     if installer.is_current_target_installed() {
-                        let res = MessageBoxW(
+                        let res = unsafe { MessageBoxW(
                             dialog,
                             &HSTRING::from(t!("gui.replace_confirm", dll = installer.target.dll_name())),
                             &HSTRING::from(t!("gui.install")),
                             MB_ICONINFORMATION | MB_OKCANCEL
-                        );
+                        ) };
                         if res != IDOK {
                             return 0;
                         }
                     }
                     // failed pre install no longer catastrophic, just warn
                     if installer.pre_install().is_err() {
-                        MessageBoxW(
-                            dialog,
-                            &HSTRING::from(t!("gui.warning_no_backup")),
-                            &HSTRING::from(t!("gui.warning")),
-                            MB_ICONWARNING | MB_OK
-                        );
+                        unsafe {
+                            MessageBoxW(
+                                dialog,
+                                &HSTRING::from(t!("gui.warning_no_backup")),
+                                &HSTRING::from(t!("gui.warning")),
+                                MB_ICONWARNING | MB_OK
+                            );
+                        }
                     }
                     match installer.install()
                         .and_then(|_| installer.post_install())
                     {
-                        Ok(_) => {
+                        Ok(_) => unsafe {
                             MessageBoxW(dialog, &HSTRING::from(t!("gui.msg_install_ok")),  
                                               &HSTRING::from(t!("gui.title")), MB_ICONINFORMATION | MB_OK);
                         },
-                        Err(e) => {
+                        Err(e) => unsafe {
                             MessageBoxW(dialog, &HSTRING::from(t!("gui.msg_install_fail", err = e.to_string())),
                                               &HSTRING::from(t!("gui.title")), MB_ICONERROR | MB_OK);
                         }
                     }
-                    update_target(dialog, GetDlgItem(dialog, IDC_TARGET).unwrap(), installer.target as _);
+                    update_target(dialog, unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() }, installer.target as _);
                 }
 
                 IDC_UNINSTALL => {
                     let installer = get_installer(dialog);
-                    let res = MessageBoxW(
+                    let res = unsafe { MessageBoxW(
                         dialog,
                         &HSTRING::from(t!("gui.delete_confirm", dll = installer.target.dll_name())),
                         &HSTRING::from(t!("gui.uninstall")),
                         MB_ICONINFORMATION | MB_OKCANCEL
-                    );
+                    ) };
                     if res == IDOK {
                         let version_info_opt = installer.get_target_version_info(installer.target);
                         if let Err(e) = installer.uninstall() {
                             // fall through but clarify danger
                             // only interrupt if error is not FailedToRestore
                             if matches!(e, installer::Error::FailedToRestore) {
-                                MessageBoxW(dialog, &HSTRING::from(e.to_string()), &HSTRING::from(t!("gui.warning")), MB_ICONWARNING | MB_OK);
+                                unsafe { MessageBoxW(
+                                    dialog,
+                                    &HSTRING::from(e.to_string()), 
+                                    &HSTRING::from(t!("gui.warning")), 
+                                    MB_ICONWARNING | MB_OK
+                                ) };
                             } else {
-                                MessageBoxW(dialog, &HSTRING::from(e.to_string()), &HSTRING::from(t!("gui.error")), MB_ICONERROR | MB_OK);
+                                unsafe { MessageBoxW(
+                                    dialog, 
+                                    &HSTRING::from(e.to_string()), 
+                                    &HSTRING::from(t!("gui.error")), 
+                                    MB_ICONERROR | MB_OK
+                                ) };
                                 return 0;
                             };
                         }
-                        update_target(dialog, GetDlgItem(dialog, IDC_TARGET).unwrap(), installer.target as _);
+                        update_target(dialog, unsafe { GetDlgItem(dialog, IDC_TARGET).unwrap() }, installer.target as _);
 
                         if let Some(version_info) = version_info_opt {
                             if !version_info.is_hachimi() {
@@ -372,17 +406,22 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
                             };
 
                             if metadata.is_dir() {
-                                let res = MessageBoxW(
+                                let res = unsafe { MessageBoxW(
                                     dialog,
                                     &HSTRING::from(t!("gui.delete_data_dir")),
                                     &HSTRING::from(t!("gui.uninstall")),
 
                                     MB_ICONINFORMATION | MB_YESNO
-                                );
+                                ) };
 
                                 if res == IDYES {
                                     if let Err(e) = std::fs::remove_dir_all(&hachimi_dir) {
-                                        MessageBoxW(dialog, &HSTRING::from(e.to_string()), &HSTRING::from(t!("gui.error")), MB_ICONERROR | MB_OK);
+                                        unsafe { MessageBoxW(
+                                            dialog, 
+                                            &HSTRING::from(e.to_string()), 
+                                            &HSTRING::from(t!("gui.error")), 
+                                            MB_ICONERROR | MB_OK
+                                        ) };
                                         return 0;
                                     }
                                 }
@@ -398,7 +437,7 @@ unsafe extern "system" fn dlg_proc(dialog: HWND, message: u32, wparam: WPARAM, l
         }
         
         WM_CLOSE => {
-            PostQuitMessage(0);
+            unsafe { PostQuitMessage(0) };
             0
         }
 
