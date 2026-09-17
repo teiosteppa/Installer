@@ -1,11 +1,11 @@
-use std::{any::Any, path::{Path, PathBuf}};
+use std::path::{Path, PathBuf};
 
 use crate::i18n::{t};
 use windows::{
     core::{w, HSTRING},
     Win32::UI::{
         Shell::ShellExecuteW,
-        WindowsAndMessaging::{MessageBoxW, IDCANCEL, MB_ICONERROR, MB_ICONINFORMATION, MB_OK, MB_OKCANCEL, SW_NORMAL}
+        WindowsAndMessaging::{MessageBoxW, IDCANCEL, MB_ICONERROR, MB_ICONWARNING, MB_ICONINFORMATION, MB_OK, MB_OKCANCEL, SW_NORMAL}
     }
 };
 
@@ -155,14 +155,19 @@ pub fn run() -> Result<bool, installer::Error> {
         let installer = Installer::custom(args.install_dir, explicit_target, args.target);
         let res = match command {
             Command::Install => {
-                let mut res = Ok(());
-                if args.pre_install {
-                    res = res.and_then(|_| installer.pre_install());
+                // is this thread safe? idk and i dont care
+                if installer.pre_install().is_err() {
+                    unsafe {
+                        MessageBoxW(
+                            None,
+                            &HSTRING::from(t!("gui.warning_no_backup")),
+                            &HSTRING::from(t!("gui.warning")),
+                            MB_ICONWARNING | MB_OK
+                        );
+                    }
                 }
-                res = res.and_then(|_| installer.install());
-                if args.post_install {
-                    res = res.and_then(|_| installer.post_install());
-                }
+                let res = installer.install()
+                    .and_then(|_| installer.post_install());
                 res
             },
             Command::Uninstall => installer.uninstall()
