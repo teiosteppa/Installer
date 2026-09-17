@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::{any::Any, path::{Path, PathBuf}};
 
 use crate::i18n::{t};
 use windows::{
@@ -174,7 +174,12 @@ pub fn run() -> Result<bool, installer::Error> {
 
         if args.launch_game {
             let game_dir = installer.install_dir.unwrap();
-            let exe_path = game_dir.join("umamusume.exe");
+            let exe_path = match game_dir.file_name().unwrap().to_str().unwrap() {
+                "UmamusumePrettyDerby_Jpn" => game_dir.join("UmamusumePrettyDerby_Jpn.exe"),
+                "UmamusumePrettyDerby" => game_dir.join("UmamusumePrettyDerby.exe"),
+                "komoemumamusume Game" => game_dir.join("komoeumamusume.exe"),
+                _ => game_dir.join("umamusume.exe")
+            };
             unsafe {
                 ShellExecuteW(
                     None,
