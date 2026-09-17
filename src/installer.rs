@@ -199,8 +199,15 @@ pub fn detect_target_from_path(path: &Path) -> Option<Target> {
 impl Installer {
     pub fn custom(install_dir: Option<PathBuf>, target: Target, custom_target: Option<String>) -> Installer {
         Installer {
-            install_dir: install_dir.or_else(|| Self::detect_install_dir(target)),
-            target,
+            install_dir: install_dir.clone().or_else(|| Self::detect_install_dir(target)),
+            // yo fuck this dogshit lol
+            target: match install_dir.unwrap().file_name().unwrap().to_str().unwrap() {
+                "Umamusume" => Target::UnityPlayer,
+                "UmamusumePrettyDerby_Jpn" => Target::CriManaVpx,
+                "komoemumamusume Game" => Target::CriManaVpxKomoe,
+                "UmamusumePrettyDerby" => Target::CriManaVpxGlobal,
+                _ => target
+            },
             custom_target,
             hwnd: Arc::new(Mutex::new(None)),
             #[cfg(feature = "net_install")]
@@ -312,6 +319,21 @@ impl Installer {
                 if !backup_exe.exists() {
                     std::fs::copy(&orig_exe, &backup_exe)?;
                 }
+
+                let steam_appid_txt = self.install_dir.as_ref()
+                    .ok_or_else(|| Error::NoInstallDir)?
+                    .join("steam_appid.txt");
+                let mut file = File::create(&steam_appid_txt)?;
+                // steam appid for jp version
+                file.write_all(b"3564400")?;
+            },
+            Target::CriManaVpxGlobal => {
+                let steam_appid_txt = self.install_dir.as_ref()
+                    .ok_or_else(|| Error::NoInstallDir)?
+                    .join("steam_appid.txt");
+                let mut file = File::create(&steam_appid_txt)?;
+                // steam appid for global version
+                file.write_all(b"3224770")?;
             }
             _ => {}
         };
